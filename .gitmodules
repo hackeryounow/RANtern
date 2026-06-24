@@ -1,0 +1,3 @@
+[submodule "backend/coresimrunner"]
+	path = backend/coresimrunner
+	url = https://github.com/hackeryounow/coresimrunner.git

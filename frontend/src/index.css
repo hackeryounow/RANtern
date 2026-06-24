@@ -1,0 +1,386 @@
+/* ============================================================
+   CoreSimRunner — Sci-Fi / Network Operations Center Theme
+   ============================================================ */
+
+:root {
+  /* ── palette ── */
+  --bg-primary:    #0a0e17;
+  --bg-panel:      #111827;
+  --bg-input:      #1a2035;
+  --border-color:  #1e3a5f;
+  --accent:        #00d4ff;
+  --accent-bg:     rgba(0, 212, 255, 0.06);
+  --accent-border: rgba(0, 212, 255, 0.4);
+  --success:       #00ff88;
+  --warning:       #ffaa00;
+  --error:         #ff4444;
+  --text:          #e0e7ff;
+  --text-secondary:#94a3c0;
+  --text-muted:    #5a6988;
+
+  /* ── layout ── */
+  --sidebar-width:      220px;
+  --sidebar-collapsed:   48px;
+
+  /* ── typography ── */
+  --font-sans:  'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, monospace;
+  --font-h1:    24px;
+  --font-body:  13px;
+
+  /* ── effects ── */
+  --glow-accent: 0 0 10px rgba(0, 212, 255, 0.25);
+  --glow-success:0 0 8px rgba(0, 255, 136, 0.2);
+  --radius: 6px;
+  --transition: 0.25s ease;
+}
+
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{
+  font-family:var(--font-sans);
+  font-size:var(--font-body);
+  color:var(--text);
+  background:var(--bg-primary);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+#root{min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg-primary)}
+::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ============================================================
+   PANELS
+   ============================================================ */
+.panel{
+  background:var(--bg-panel);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius);
+  padding:16px;
+}
+.panel-glow{
+  box-shadow:var(--glow-accent);
+  border-color:var(--accent-border);
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 14px;
+  font-size:12px;
+  font-family:var(--font-mono);
+  font-weight:500;
+  border-radius:var(--radius);
+  border:1px solid var(--border-color);
+  background:var(--bg-panel);
+  color:var(--text-secondary);
+  cursor:pointer;
+  transition:all var(--transition);
+  white-space:nowrap;
+}
+.btn:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+  box-shadow:0 0 6px rgba(0,212,255,0.15);
+}
+.btn:disabled{opacity:0.4;cursor:not-allowed;box-shadow:none}
+.btn-primary{
+  background:rgba(0,212,255,0.1);
+  border-color:var(--accent);
+  color:var(--accent);
+}
+.btn-primary:hover{background:rgba(0,212,255,0.2);box-shadow:var(--glow-accent)}
+.btn-danger{
+  border-color:rgba(255,68,68,0.4);
+  color:var(--error);
+}
+.btn-danger:hover{background:rgba(255,68,68,0.1);box-shadow:0 0 8px rgba(255,68,68,0.2)}
+.btn-success{
+  border-color:rgba(0,255,136,0.4);
+  color:var(--success);
+}
+.btn-success:hover{background:rgba(0,255,136,0.1)}
+.btn-export{
+  border-color:var(--accent-border);
+  color:var(--accent);
+  background:transparent;
+  padding:5px 10px;
+  font-size:11px;
+}
+.btn-export:hover{background:var(--accent-bg)}
+
+/* ── Icon button ── */
+.btn-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:32px;height:32px;
+  border-radius:var(--radius);
+  border:1px solid var(--border-color);
+  background:var(--bg-panel);
+  color:var(--text-secondary);
+  cursor:pointer;
+  transition:all var(--transition);
+  font-size:16px;
+}
+.btn-icon:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+  box-shadow:0 0 6px rgba(0,212,255,0.15);
+}
+.btn-icon.active{
+  border-color:var(--accent);
+  color:var(--accent);
+  background:var(--accent-bg);
+}
+
+/* ============================================================
+   INPUTS
+   ============================================================ */
+.input,textarea.input{
+  display:block;
+  width:100%;
+  padding:7px 10px;
+  font-size:12px;
+  font-family:var(--font-mono);
+  color:var(--text);
+  background:var(--bg-input);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius);
+  outline:none;
+  transition:border-color var(--transition);
+}
+.input:focus,textarea.input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 5px rgba(0,212,255,0.15);
+}
+select.input{
+  appearance:none;
+  cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2300d4ff'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  padding-right:28px;
+}
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:2px 7px;
+  font-size:10px;
+  font-weight:600;
+  font-family:var(--font-mono);
+  border-radius:3px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+.badge-running{background:rgba(0,212,255,0.12);color:var(--accent)}
+.badge-idle{background:rgba(148,163,192,0.1);color:var(--text-muted)}
+.badge-success{background:rgba(0,255,136,0.1);color:var(--success)}
+.badge-error{background:rgba(255,68,68,0.1);color:var(--error)}
+
+/* ============================================================
+   DATA TABLE
+   ============================================================ */
+.data-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+  font-family:var(--font-mono);
+}
+.data-table th{
+  text-align:left;
+  padding:8px 10px;
+  color:var(--text-muted);
+  font-weight:600;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  border-bottom:1px solid var(--border-color);
+  white-space:nowrap;
+}
+.data-table td{
+  padding:7px 10px;
+  border-bottom:1px solid rgba(30,58,95,0.5);
+  color:var(--text-secondary);
+}
+.data-table tbody tr:hover{background:var(--accent-bg)}
+.data-table tbody tr{cursor:default;transition:background var(--transition)}
+
+/* ============================================================
+   PULSE ANIMATION
+   ============================================================ */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.pulse{animation:pulse 1.8s ease-in-out infinite}
+
+/* ============================================================
+   SIDEBAR — handled by Ant Design Sider
+   ============================================================ */
+
+/* ── Settings — Profile text editor (kept for textarea fallback) ── */
+.profile-editor-textarea{
+  width:100%;min-height:360px;
+  font-family:var(--font-mono);
+  font-size:12px;
+  line-height:1.7;
+  color:var(--text);
+  background:var(--bg-primary);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius);
+  padding:14px;
+  outline:none;
+  resize:vertical;
+  transition:border-color var(--transition);
+}
+.profile-editor-textarea:focus{
+  border-color:var(--accent);
+  box-shadow:var(--glow-accent);
+}
+
+/* ── Sidebar: push collapse trigger to bottom ── */
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Dashboard results card: table fills space, pagination at bottom ── */
+.dashboard-results-card {
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-results-card .ant-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.dashboard-results-card .ant-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-results-card .ant-spin-nested-loading {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-results-card .ant-spin-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-results-card .ant-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-results-card .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-results-card .ant-table-body {
+  flex: 1 !important;
+}
+.dashboard-results-card .ant-table-pagination {
+  flex-shrink: 0;
+  margin-bottom: 0 !important;
+  padding-top: 8px;
+  border-top: 1px solid #1e293b;
+}
+
+/* ── UE Action Panel & Clickable Rows ── */
+
+.ue-row-clickable {
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.ue-row-clickable:hover {
+  background: var(--accent-bg) !important;
+}
+.ue-row-selected {
+  background: rgba(0, 212, 255, 0.1) !important;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.ue-action-panel {
+  width: 300px;
+  min-width: 300px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: sticky;
+  top: 20px;
+  animation: slideInRight 0.2s ease;
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.ue-action-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+}
+.ue-action-option:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+.ue-action-option.selected {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.ue-action-option .action-radio {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.ue-action-option.selected .action-radio {
+  color: var(--accent);
+}
+
+.ue-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.badge-warning {
+  background: rgba(255, 170, 0, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+}

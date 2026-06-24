@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+tmp/
+
+# Node / npm
+node_modules/
+.npm-cache/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.qoder/
+
+# Logs and databases
+*.log
+*.sqlite
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test files
+.coverage
+.htmlcov
+.tox
+.nox
+.mypy_cache
+.pytest_cache
+
+# CoreSimRunner specific
+*.pcap
+*.dump
+temp/
+tmp/
+
+# Configuration files with sensitive data
+config/*.json
+!config/*template.json
+
+# Coverage reports
+coverage.xml
+*.cover
+
+# Runtime files
+*.pid
+*.sock
+.npm-cache

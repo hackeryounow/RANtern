@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "coresimrunner"
+version = "1.0.0"
+description = "5G/4G Core Network Subscription Provisioning and Multi-UE Testing"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+dependencies = [
+    "requests>=2.25.0",
+    "pycryptodome>=3.10.0",
+    "loguru>=0.5.0",
+    "tqdm>=4.60.0",
+    "pycrate==0.7.9",
+    "CryptoMobile>=0.3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["coresimrunner*"]
