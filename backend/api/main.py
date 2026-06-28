@@ -6,6 +6,7 @@ Run with: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 import os
 import sys
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,10 +20,45 @@ if _BACKEND_DIR not in sys.path:
 from api.ws import ws_hub
 from api.routes import provision, test, config, profiles
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle."""
+    # Initialize Redis UE manager singleton
+    from coresimrunner.config_loader import ConfigLoader
+    from coresimrunner.redis_manager import RedisUEManager
+
+    try:
+        cfg = ConfigLoader()
+        redis_host = cfg.get("REDIS_HOST", "127.0.0.1")
+        redis_port = cfg.get_int("REDIS_PORT", 6379)
+        redis_password = cfg.get("REDIS_PASSWORD", "") or None
+        redis_db = cfg.get_int("REDIS_DB", 0)
+    except Exception:
+        redis_host, redis_port, redis_password, redis_db = "127.0.0.1", 6379, None, 0
+
+    try:
+        ue_store = RedisUEManager(
+            host=redis_host, port=redis_port, password=redis_password, db=redis_db
+        )
+        # Clear stale UE state from previous runs
+        ue_store.clear_all()
+        # Expose globally so route modules can import it
+        import api.routes.test as test_mod
+        test_mod.ue_store = ue_store
+        logger.info("Redis UE manager initialised (cleared on startup)")
+    except Exception as e:
+        logger.warning(f"Redis not available ({e}); UE state will not be persisted")
+
+    yield
+    # shutdown: nothing special needed
+
+
 app = FastAPI(
     title="CoreSimRunner API",
     description="5G/4G Core Network Testing Platform",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS — allow frontend dev server

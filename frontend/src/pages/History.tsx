@@ -73,6 +73,9 @@ export default function History() {
     if (ls.registration) boxPlotData.push({ type: 'box', name: 'Registration', y: _vals(ls.registration), markerColor: '#00d4ff', boxpoints: 'outliers' });
     if (ls.session) boxPlotData.push({ type: 'box', name: 'Session', y: _vals(ls.session), markerColor: '#00ff88', boxpoints: 'outliers' });
     if (ls.total) boxPlotData.push({ type: 'box', name: 'Total', y: _vals(ls.total), markerColor: '#ffaa00', boxpoints: 'outliers' });
+    if (ls.release) boxPlotData.push({ type: 'box', name: 'Release', y: _vals(ls.release), markerColor: '#ff6b6b', boxpoints: 'outliers' });
+    if (ls.deregister) boxPlotData.push({ type: 'box', name: 'Deregister', y: _vals(ls.deregister), markerColor: '#c084fc', boxpoints: 'outliers' });
+    if (ls.service_request) boxPlotData.push({ type: 'box', name: 'ServiceReq', y: _vals(ls.service_request), markerColor: '#38bdf8', boxpoints: 'outliers' });
   }
 
   const plotlyLayout: any = {
@@ -176,7 +179,7 @@ export default function History() {
                     <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid #1e3a5f' }}>
-                          {['IMSI','IPv4','State','Reg (ms)','Session (ms)','Total (ms)'].map(h => (
+                          {['IMSI','IPv4','RANUENGAPID','AMFUENGAPID','State','Reg (ms)','Session (ms)','Total (ms)','Release (ms)','Dereg (ms)','SR (ms)'].map(h => (
                             <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10, fontWeight: 600 }}>{h}</th>
                           ))}
                         </tr>
@@ -186,12 +189,17 @@ export default function History() {
                           <tr key={i} style={{ borderBottom: '1px solid #1e293b' }}>
                             <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.imsi}</td>
                             <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.ipv4}</td>
+                            <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.ran_ue_ngap_id ?? '-'}</td>
+                            <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.amf_ue_ngap_id ?? '-'}</td>
                             <td style={{ padding: '5px 8px' }}>
-                              <Tag color={ue.state?.includes('established') ? 'success' : 'default'} style={{ margin: 0, fontSize: 10 }}>{ue.state}</Tag>
+                              <Tag color={ue.state?.includes('established') ? 'success' : ue.state === 'pdu_released' || ue.state === 'context_released' ? 'warning' : 'default'} style={{ margin: 0, fontSize: 10 }}>{ue.state}</Tag>
                             </td>
                             <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.latency_ms?.registration ?? '-'}</td>
                             <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.latency_ms?.pdu_session_1 ?? '-'}</td>
                             <td style={{ padding: '5px 8px', color: '#00d4ff', fontWeight: 700 }}>{ue.latency_ms?.total ?? '-'}</td>
+                            <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.latency_ms?.release ?? '-'}</td>
+                            <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.latency_ms?.deregister ?? '-'}</td>
+                            <td style={{ padding: '5px 8px', color: '#94a3b8' }}>{ue.latency_ms?.service_request ?? '-'}</td>
                           </tr>
                         ))}
                       </tbody>

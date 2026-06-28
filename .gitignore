@@ -62,6 +62,7 @@ Thumbs.db
 *.dump
 temp/
 tmp/
+backend/data/
 
 # Configuration files with sensitive data
 config/*.json

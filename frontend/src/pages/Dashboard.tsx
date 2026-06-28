@@ -5,6 +5,7 @@ import {
 import {
   PlayCircleOutlined, StopOutlined, ThunderboltOutlined,
   DownloadOutlined, CloudServerOutlined, TableOutlined, BarChartOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import {
@@ -13,6 +14,7 @@ import {
   getTestUEs, getLatencyStats, listProfiles,
   exportUEsCSV, exportLatencyJSON, exportFullJSON,
   releasePduSession, triggerUserInactivity, deregisterUE,
+  releaseAllPduSessions, getUEEvents,
 } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import Plot from '../components/Plot';
@@ -36,6 +38,10 @@ export default function Dashboard() {
   const [selectedPduId, setSelectedPduId] = useState<number>(1);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState<string>('');
+
+  // Event log state
+  const [eventLog, setEventLog] = useState<any[]>([]);
+  const [showEvents, setShowEvents] = useState(false);
 
   // Test state
   const [testRunning, setTestRunning] = useState(false);
@@ -88,6 +94,8 @@ export default function Dashboard() {
     if (type === 'ue_removed') {
       setSelectedIdx(null);
       setSelectedAction(null);
+      setEventLog([]);
+      setShowEvents(false);
       getTestUEs().then(r => setUes(r.data)).catch(() => {});
     }
     if (type.startsWith('provision_')) {
@@ -100,6 +108,8 @@ export default function Dashboard() {
   const handleRun = async () => {
     if (taskMode === 'ue-test') {
       setShowBoxPlot(false); setUes([]); setLatencyStats({});
+      setSelectedIdx(null); setSelectedAction(null);
+      setEventLog([]); setShowEvents(false);
       setTestRunning(true);
       try {
         const payload = { count, core_network: coreNetwork, profile };
@@ -145,6 +155,27 @@ export default function Dashboard() {
     }
   };
 
+  const handleReleaseAll = async () => {
+    setActionLoading(true);
+    setActionMsg('Releasing all PDU sessions...');
+    try {
+      await releaseAllPduSessions();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleViewEvents = async (idx: number) => {
+    try {
+      const r = await getUEEvents(idx);
+      setEventLog(r.data.events || []);
+      setShowEvents(true);
+    } catch {
+      setEventLog([]);
+    }
+  };
+
   const provPct = provStatus.total > 0 ? Math.round((provStatus.progress / provStatus.total) * 100) : 0;
 
   // UE table columns
@@ -153,8 +184,8 @@ export default function Dashboard() {
     { title: 'DNN', dataIndex: 'dnn', key: 'dnn', width: 80 },
     { title: 'IPv4', dataIndex: 'ipv4', key: 'ipv4', width: 130 },
     { title: 'TEID', dataIndex: 'gtp_teid', key: 'teid', width: 90 },
-    { title: 'RAN-ID', dataIndex: 'ran_ue_ngap_id', key: 'ran', width: 80 },
-    { title: 'AMF-ID', dataIndex: 'amf_ue_ngap_id', key: 'amf', width: 80 },
+    { title: 'RANUENGAPID', dataIndex: 'ran_ue_ngap_id', key: 'ran', width: 100 },
+    { title: 'AMFUENGAPID', dataIndex: 'amf_ue_ngap_id', key: 'amf', width: 100 },
     {
       title: 'State', key: 'state', width: 110,
       render: (_: any, r: any) => {
@@ -172,6 +203,9 @@ export default function Dashboard() {
       title: 'Total (ms)', key: 'total', width: 90,
       render: (_: any, r: any) => <Text strong style={{ color: '#00d4ff' }}>{r.latency_ms?.total ?? '-'}</Text>,
     },
+    { title: 'Release (ms)', key: 'release', width: 100, render: (_: any, r: any) => r.latency_ms?.release ?? '-' },
+    { title: 'Dereg (ms)', key: 'dereg', width: 90, render: (_: any, r: any) => r.latency_ms?.deregister ?? '-' },
+    { title: 'SR (ms)', key: 'sr', width: 80, render: (_: any, r: any) => r.latency_ms?.service_request ?? '-' },
   ];
 
   // Box plot data
@@ -187,6 +221,9 @@ export default function Dashboard() {
   if (latencyStats.registration) plotData.push({ type: 'box', name: 'Registration', y: _vals(latencyStats.registration), markerColor: '#00d4ff', boxpoints: 'outliers' });
   if (latencyStats.session) plotData.push({ type: 'box', name: 'Session', y: _vals(latencyStats.session), markerColor: '#00ff88', boxpoints: 'outliers' });
   if (latencyStats.total) plotData.push({ type: 'box', name: 'Total', y: _vals(latencyStats.total), markerColor: '#ffaa00', boxpoints: 'outliers' });
+  if (latencyStats.release) plotData.push({ type: 'box', name: 'Release', y: _vals(latencyStats.release), markerColor: '#ff6b6b', boxpoints: 'outliers' });
+  if (latencyStats.deregister) plotData.push({ type: 'box', name: 'Deregister', y: _vals(latencyStats.deregister), markerColor: '#c084fc', boxpoints: 'outliers' });
+  if (latencyStats.service_request) plotData.push({ type: 'box', name: 'ServiceReq', y: _vals(latencyStats.service_request), markerColor: '#38bdf8', boxpoints: 'outliers' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
@@ -309,6 +346,7 @@ export default function Dashboard() {
           extra={
             viewTab === 'table' && (
               <Space size="small">
+                <Button size="small" danger icon={<WarningOutlined />} onClick={handleReleaseAll}>Release All PDU</Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={exportUEsCSV}>CSV</Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={exportLatencyJSON}>Stats</Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={exportFullJSON}>Full</Button>
@@ -328,7 +366,7 @@ export default function Dashboard() {
                 pageSizeOptions: ['20', '50', '100'],
                 size: 'small',
               }}
-              scroll={{ x: 1000, y: 'calc(100% - 40px)' }}
+              scroll={{ x: 1200, y: 'calc(100% - 40px)' }}
               onRow={(record) => ({
                 onClick: () => {
                   const idx = record.key as number;
@@ -336,10 +374,15 @@ export default function Dashboard() {
                     setSelectedIdx(null);
                     setSelectedAction(null);
                     setActionMsg('');
+                    setEventLog([]);
+                    setShowEvents(false);
                   } else {
                     setSelectedIdx(idx);
                     setSelectedAction(null);
                     setActionMsg('');
+                    setEventLog([]);
+                    setShowEvents(false);
+                    handleViewEvents(idx);
                   }
                 },
                 style: {
@@ -365,7 +408,7 @@ export default function Dashboard() {
           style={{ marginBottom: 16, flexShrink: 0, borderColor: '#1e3a5f', background: '#0d1117' }}
           styles={{ body: { padding: '12px 16px' } }}
           extra={
-            <Button size="small" type="text" style={{ color: '#64748b' }} onClick={() => { setSelectedIdx(null); setSelectedAction(null); setActionMsg(''); }}>
+            <Button size="small" type="text" style={{ color: '#64748b' }} onClick={() => { setSelectedIdx(null); setSelectedAction(null); setActionMsg(''); setEventLog([]); setShowEvents(false); }}>
               ✕
             </Button>
           }
@@ -388,8 +431,8 @@ export default function Dashboard() {
               </div>
               <div style={{ display: 'flex', gap: 16, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#64748b' }}>
                 <span>IPv4 <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.ipv4}</span></span>
-                <span>RAN <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.ran_ue_ngap_id}</span></span>
-                <span>AMF <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.amf_ue_ngap_id}</span></span>
+                <span>RANUENGAPID <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.ran_ue_ngap_id}</span></span>
+                <span>AMFUENGAPID <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.amf_ue_ngap_id}</span></span>
               </div>
             </div>
 
@@ -453,6 +496,22 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+
+          {/* Event log */}
+          {showEvents && eventLog.length > 0 && (
+            <div style={{ marginTop: 12, borderTop: '1px solid #1e3a5f', paddingTop: 8 }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>EVENT LOG</Text>
+              <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                {eventLog.map((evt: any, ei: number) => (
+                  <div key={ei} style={{ padding: '2px 0', color: '#94a3b8', borderBottom: '1px solid #1e293b' }}>
+                    <span style={{ color: '#64748b', marginRight: 8 }}>{new Date(evt.ts).toLocaleTimeString()}</span>
+                    <span style={{ color: '#00d4ff', marginRight: 6 }}>[{evt.type}]</span>
+                    <span>{evt.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

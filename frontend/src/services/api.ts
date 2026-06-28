@@ -26,6 +26,12 @@ export const triggerUserInactivity = (ueIndex: number) =>
   api.post(`/test/ue/${ueIndex}/user-inactivity`);
 export const deregisterUE = (ueIndex: number) =>
   api.post(`/test/ue/${ueIndex}/deregister`);
+export const releaseAllPduSessions = () =>
+  api.post('/test/release-all-pdu');
+
+// ─── UE Events ───
+export const getUEEvents = (ueIndex: number) =>
+  api.get(`/test/ue/${ueIndex}/events`);
 
 // ─── Export ───
 export const exportUEsCSV = () => window.open('/api/test/export/ues', '_blank');
