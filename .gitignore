@@ -28,7 +28,7 @@ tmp/
 node_modules/
 .npm-cache/
 frontend/dist/
-
+.arts/
 # IDE
 .vscode/
 .idea/

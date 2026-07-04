@@ -278,6 +278,9 @@ export default function UETest() {
                 <button className="btn btn-primary" onClick={handleServiceRequestAll} style={{ fontSize: '11px', padding: '4px 10px' }}>
                   Service Request All
                 </button>
+                <button className="btn btn-primary" onClick={handleOneClickTest} style={{ fontSize: '11px', padding: '4px 10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                  One-Click Test
+                </button>
                 <button className="btn btn-export" onClick={exportUEsCSV}>↓ Export CSV</button>
                 <button className="btn btn-export" onClick={exportLatencyJSON}>↓ Export JSON (Stats)</button>
                 <button className="btn btn-export" onClick={exportFullJSON}>↓ Export JSON (Full)</button>
