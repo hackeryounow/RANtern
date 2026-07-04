@@ -22,12 +22,24 @@ export const getLatencyStats = () => api.get('/test/latency-stats');
 // ─── Per-UE Actions ───
 export const releasePduSession = (ueIndex: number, pduSessionId: number) =>
   api.post(`/test/ue/${ueIndex}/release-pdu`, { pdu_session_id: pduSessionId });
+export const establishPduSession = (ueIndex: number, pduSessionId: number = 1) =>
+  api.post(`/test/ue/${ueIndex}/establish-pdu`, { pdu_session_id: pduSessionId });
 export const triggerUserInactivity = (ueIndex: number) =>
   api.post(`/test/ue/${ueIndex}/user-inactivity`);
 export const deregisterUE = (ueIndex: number) =>
   api.post(`/test/ue/${ueIndex}/deregister`);
+export const reregisterUE = (ueIndex: number) =>
+  api.post(`/test/ue/${ueIndex}/re-register`);
 export const releaseAllPduSessions = () =>
   api.post('/test/release-all-pdu');
+export const deregisterAllUEs = () =>
+  api.post('/test/deregister-all');
+export const serviceRequestAllUEs = () =>
+  api.post('/test/service-request-all');
+export const oneClickTest = () =>
+  api.post('/test/one-click-test');
+export const clearRedis = () =>
+  api.post('/test/clear-redis');
 
 // ─── UE Events ───
 export const getUEEvents = (ueIndex: number) =>

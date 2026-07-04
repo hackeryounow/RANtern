@@ -1,0 +1,109 @@
+{
+    "title": "466990000000001",
+    "security": {
+        "k": "465B5CE8B199B49FAA5F0A2EE238A6BC",
+        "amf": "8000",
+        "op_type": 0,
+        "op_value": "E8ED289DEBA952E4283B54E88E6183CA",
+        "op": null,
+        "opc": "E8ED289DEBA952E4283B54E88E6183CA"
+    },
+    "ambr": {
+        "downlink": {
+            "value": 1,
+            "unit": 3
+        },
+        "uplink": {
+            "value": 1,
+            "unit": 3
+        }
+    },
+    "subscriber_status": 0,
+    "operator_determined_barring": 0,
+    "slice": [
+        {
+            "sst": 1,
+            "default_indicator": true,
+            "session": [
+                {
+                    "name": "internet",
+                    "type": 1,
+                    "ambr": {
+                        "downlink": {
+                            "value": 1,
+                            "unit": 3
+                        },
+                        "uplink": {
+                            "value": 1,
+                            "unit": 3
+                        }
+                    },
+                    "qos": {
+                        "index": 9,
+                        "arp": {
+                            "priority_level": 8,
+                            "pre_emption_capability": 1,
+                            "pre_emption_vulnerability": 1
+                        }
+                    }
+                },
+                {
+                    "name": "ims",
+                    "type": 1,
+                    "qos": {
+                        "index": 5,
+                        "arp": {
+                            "priority_level": 1,
+                            "pre_emption_capability": 1,
+                            "pre_emption_vulnerability": 1
+                        }
+                    },
+                    "ambr": {
+                        "downlink": {
+                            "value": 1,
+                            "unit": 3
+                        },
+                        "uplink": {
+                            "value": 1,
+                            "unit": 3
+                        }
+                    },
+                    "ue": {
+
+                    },
+                    "smf": {
+
+                    },
+                    "pcc_rule": [
+                        {
+                            "qos": {
+                                "index": 1,
+                                "arp": {
+                                    "priority_level": 2,
+                                    "pre_emption_capability": 2,
+                                    "pre_emption_vulnerability": 2
+                                },
+                                "mbr": {
+                                    "downlink": {
+                                        "unit": 1
+                                    },
+                                    "uplink": {
+                                        "unit": 1
+                                    }
+                                },
+                                "gbr": {
+                                    "downlink": {
+                                        "unit": 1
+                                    },
+                                    "uplink": {
+                                        "unit": 1
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

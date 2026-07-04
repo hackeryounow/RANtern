@@ -5,7 +5,7 @@ import {
 import {
   PlayCircleOutlined, StopOutlined, ThunderboltOutlined,
   DownloadOutlined, CloudServerOutlined, TableOutlined, BarChartOutlined,
-  WarningOutlined,
+  WarningOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import {
@@ -13,8 +13,8 @@ import {
   start5GTest, start4GTest, stopTest, getTestStatus,
   getTestUEs, getLatencyStats, listProfiles,
   exportUEsCSV, exportLatencyJSON, exportFullJSON,
-  releasePduSession, triggerUserInactivity, deregisterUE,
-  releaseAllPduSessions, getUEEvents,
+  releasePduSession, establishPduSession, triggerUserInactivity, deregisterUE, reregisterUE,
+  releaseAllPduSessions, deregisterAllUEs, serviceRequestAllUEs, clearRedis, getUEEvents,
 } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import Plot from '../components/Plot';
@@ -26,6 +26,7 @@ type TaskMode = 'provision' | 'ue-test';
 export default function Dashboard() {
   const [mode, setMode] = useState<'5g' | '4g'>('5g');
   const [count, setCount] = useState(10);
+  const [ueInitDelay, setUeInitDelay] = useState(0.3);
   const [coreNetwork, setCoreNetwork] = useState('free5gc');
   const [action, setAction] = useState('provision');
   const [profile, setProfile] = useState('');
@@ -34,7 +35,7 @@ export default function Dashboard() {
 
   // UE action state
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [selectedAction, setSelectedAction] = useState<'release-pdu' | 'user-inactivity' | 'deregister' | null>(null);
+  const [selectedAction, setSelectedAction] = useState<'release-pdu' | 'establish-pdu' | 'user-inactivity' | 'deregister' | 're-register' | null>(null);
   const [selectedPduId, setSelectedPduId] = useState<number>(1);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState<string>('');
@@ -83,6 +84,10 @@ export default function Dashboard() {
       getTestUEs().then(r => setUes(r.data)).catch(() => {});
       getLatencyStats().then(r => { setLatencyStats(r.data); setShowBoxPlot(true); }).catch(() => {});
     }
+    if (type === 'latency_stats_update') {
+      setLatencyStats(data);
+      setShowBoxPlot(true);
+    }
     if (type === 'ue_action_progress') {
       setActionMsg(data.message || '');
     }
@@ -98,6 +103,11 @@ export default function Dashboard() {
       setShowEvents(false);
       getTestUEs().then(r => setUes(r.data)).catch(() => {});
     }
+    if (type === 'redis_cleared') {
+      setUes([]); setLatencyStats({}); setShowBoxPlot(false);
+      setSelectedIdx(null); setSelectedAction(null);
+      setEventLog([]); setShowEvents(false);
+    }
     if (type.startsWith('provision_')) {
       setProvLog(prev => [...prev, `[${type}] ${JSON.stringify(data)}`]);
       if (type === 'provision_complete') setProvRunning(false);
@@ -112,7 +122,7 @@ export default function Dashboard() {
       setEventLog([]); setShowEvents(false);
       setTestRunning(true);
       try {
-        const payload = { count, core_network: coreNetwork, profile };
+        const payload = { count, core_network: coreNetwork, profile, ue_init_delay: ueInitDelay };
         if (mode === '5g') await start5GTest(payload); else await start4GTest(payload);
       } catch (e: any) { alert(e.response?.data?.error || e.message); setTestRunning(false); }
     } else {
@@ -144,10 +154,14 @@ export default function Dashboard() {
     try {
       if (selectedAction === 'release-pdu') {
         await releasePduSession(selectedIdx, selectedPduId);
+      } else if (selectedAction === 'establish-pdu') {
+        await establishPduSession(selectedIdx, selectedPduId);
       } else if (selectedAction === 'user-inactivity') {
         await triggerUserInactivity(selectedIdx);
       } else if (selectedAction === 'deregister') {
         await deregisterUE(selectedIdx);
+      } else if (selectedAction === 're-register') {
+        await reregisterUE(selectedIdx);
       }
     } catch (e: any) {
       setActionMsg(e.response?.data?.error || e.message);
@@ -163,6 +177,39 @@ export default function Dashboard() {
     } catch (e: any) {
       setActionMsg(e.response?.data?.error || e.message);
       setActionLoading(false);
+    }
+  };
+
+  const handleDeregisterAll = async () => {
+    setActionLoading(true);
+    setActionMsg('Deregistering all UEs...');
+    try {
+      await deregisterAllUEs();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleServiceRequestAll = async () => {
+    setActionLoading(true);
+    setActionMsg('Triggering service request for all UEs...');
+    try {
+      await serviceRequestAllUEs();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleClearRedis = async () => {
+    if (!window.confirm('Clear all UE data from Redis? This cannot be undone.')) return;
+    try {
+      await clearRedis();
+      setUes([]); setLatencyStats({}); setShowBoxPlot(false);
+      setActionMsg('Redis cleared');
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
     }
   };
 
@@ -243,6 +290,11 @@ export default function Dashboard() {
               ● PROVISIONING
             </Tag>
           )}
+          {!testRunning && (
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={handleClearRedis} style={{ marginLeft: 8 }}>
+              Clear Redis
+            </Button>
+          )}
         </Col>
       </Row>
 
@@ -267,6 +319,10 @@ export default function Dashboard() {
           <div>
             <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>COUNT:</Text>
             <InputNumber value={count} onChange={v => setCount(v ?? 10)} size="small" min={1} max={1000} style={{ width: 70 }} />
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>RATE (s):</Text>
+            <InputNumber value={ueInitDelay} onChange={v => setUeInitDelay(v ?? 0.3)} size="small" min={0} max={10} step={0.1} style={{ width: 70 }} />
           </div>
           <div>
             <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>CORE:</Text>
@@ -347,6 +403,8 @@ export default function Dashboard() {
             viewTab === 'table' && (
               <Space size="small">
                 <Button size="small" danger icon={<WarningOutlined />} onClick={handleReleaseAll}>Release All PDU</Button>
+                <Button size="small" danger icon={<WarningOutlined />} onClick={handleDeregisterAll}>Deregister All</Button>
+                <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={handleServiceRequestAll}>Service Request All</Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={exportUEsCSV}>CSV</Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={exportLatencyJSON}>Stats</Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={exportFullJSON}>Full</Button>

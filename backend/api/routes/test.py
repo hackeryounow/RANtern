@@ -47,6 +47,8 @@ _test_state = {
     "error": None,
 }
 _test_lock = threading.Lock()
+_batch_lock = threading.Lock()
+_batch_in_progress = False  # Prevents _on_ue_state_change from calling _refresh_ue_list during batch
 
 _HISTORY_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "test_history"
@@ -68,6 +70,7 @@ class TestStartRequest(BaseModel):
     tac: Optional[str] = None
     start_imsi: Optional[str] = None
     log_level: Optional[str] = None
+    ue_init_delay: Optional[float] = 0.3  # seconds between each UE initial message
     # 4G specific
     enb_address: Optional[str] = None
     apn: Optional[str] = None
@@ -147,6 +150,26 @@ async def stop_test():
     # Compute final stats and persist
     _finalize_test()
     return {"status": "stopped"}
+
+
+@router.post("/test/clear-redis")
+async def clear_redis():
+    """Clear all UE data from Redis and reset in-memory test state."""
+    with _test_lock:
+        if _test_state["running"]:
+            return {"error": "Cannot clear Redis while a test is running"}
+    try:
+        _ue_store().clear_all()
+    except Exception as e:
+        logger.error(f"Error clearing Redis: {e}")
+        return {"error": str(e)}
+    with _test_lock:
+        _test_state.update({
+            "ues": [], "ngap_stats": {}, "latency_stats": {},
+            "error": None, "end_time": None,
+        })
+    ws_hub.broadcast_sync("redis_cleared", {})
+    return {"status": "cleared"}
 
 
 @router.get("/test/status")
@@ -270,6 +293,45 @@ async def deregister_ue(ue_index: int):
     return {"status": "started", "action": "deregister", "ue_index": ue_index}
 
 
+@router.post("/test/ue/{ue_index}/establish-pdu")
+async def establish_pdu_session(ue_index: int, req: ReleasePduRequest = None):
+    """Establish a new PDU session for a UE (after a previous release)."""
+    pdu_session_id = req.pdu_session_id if req else 1
+    with _test_lock:
+        runner = _test_state.get("runner")
+        if not runner or not getattr(runner, 'gnb', None):
+            return {"error": "No active test runner"}
+        if ue_index < 0 or ue_index >= len(runner.gnb.ues):
+            return {"error": f"Invalid UE index: {ue_index}"}
+
+    t = threading.Thread(
+        target=_execute_ue_action,
+        args=(ue_index, "establish-pdu", {"pdu_session_id": pdu_session_id}),
+        daemon=True
+    )
+    t.start()
+    return {"status": "started", "action": "establish-pdu", "ue_index": ue_index}
+
+
+@router.post("/test/ue/{ue_index}/re-register")
+async def reregister_ue(ue_index: int):
+    """Re-register a previously deregistered UE."""
+    with _test_lock:
+        runner = _test_state.get("runner")
+        if not runner or not getattr(runner, 'gnb', None):
+            return {"error": "No active test runner"}
+        if ue_index < 0 or ue_index >= len(runner.gnb.ues):
+            return {"error": f"Invalid UE index: {ue_index}"}
+
+    t = threading.Thread(
+        target=_execute_ue_action,
+        args=(ue_index, "re-register", {}),
+        daemon=True
+    )
+    t.start()
+    return {"status": "started", "action": "re-register", "ue_index": ue_index}
+
+
 @router.post("/test/release-all-pdu")
 async def release_all_pdu_sessions():
     """Release PDU sessions for all UEs that currently have active sessions."""
@@ -291,6 +353,336 @@ async def release_all_pdu_sessions():
     )
     t.start()
     return {"status": "started", "action": "release-all-pdu", "count": len(ue_indices)}
+
+
+@router.post("/test/deregister-all")
+async def deregister_all_ues():
+    """Deregister all UEs that are currently registered."""
+    with _test_lock:
+        runner = _test_state.get("runner")
+        if not runner or not getattr(runner, 'gnb', None):
+            return {"error": "No active test runner"}
+        ue_indices = []
+        for i, ue in enumerate(runner.gnb.ues):
+            if ue.registered:
+                ue_indices.append(i)
+        if not ue_indices:
+            return {"error": "No registered UEs to deregister"}
+
+    t = threading.Thread(
+        target=_execute_batch_deregister,
+        args=(ue_indices,),
+        daemon=True
+    )
+    t.start()
+    return {"status": "started", "action": "deregister-all", "count": len(ue_indices)}
+
+
+@router.post("/test/service-request-all")
+async def service_request_all_ues():
+    """Trigger user-inactivity + service request for all registered UEs."""
+    with _test_lock:
+        runner = _test_state.get("runner")
+        if not runner or not getattr(runner, 'gnb', None):
+            return {"error": "No active test runner"}
+        ue_indices = []
+        for i, ue in enumerate(runner.gnb.ues):
+            if ue.registered:
+                ue_indices.append(i)
+        if not ue_indices:
+            return {"error": "No registered UEs to trigger service request"}
+
+    t = threading.Thread(
+        target=_execute_batch_service_request,
+        args=(ue_indices,),
+        daemon=True
+    )
+    t.start()
+    return {"status": "started", "action": "service-request-all", "count": len(ue_indices)}
+
+
+@router.post("/test/one-click-test")
+async def one_click_test():
+    """Execute one-click test for all UEs: deregister, release-pdu, service-request.
+    Each test is preceded by re-registration + PDU session establishment."""
+    with _test_lock:
+        runner = _test_state.get("runner")
+        if not runner or not getattr(runner, 'gnb', None):
+            return {"error": "No active test runner"}
+        ue_indices = list(range(len(runner.gnb.ues)))
+        if not ue_indices:
+            return {"error": "No UEs available"}
+
+    t = threading.Thread(
+        target=_execute_one_click_test,
+        args=(ue_indices,),
+        daemon=True
+    )
+    t.start()
+    return {"status": "started", "action": "one-click-test", "count": len(ue_indices)}
+
+
+def _execute_batch_deregister(ue_indices: List[int]):
+    """Background thread to deregister multiple UEs concurrently."""
+    global _batch_in_progress
+    _batch_in_progress = True
+    try:
+        with _test_lock:
+            runner = _test_state.get("runner")
+            if not runner or not runner.gnb:
+                return
+            gnb = runner.gnb
+            cancel_event = _test_state.get("cancel_event")
+
+        ws_hub.broadcast_sync("ue_action_progress", {
+            "ue_index": -1, "action": "deregister-all", "status": "started",
+            "message": f"Batch deregister started for {len(ue_indices)} UEs"
+        })
+
+        gnb_status = _ensure_gnb_alive(gnb)
+        if gnb_status == "dead":
+            logger.error("[BatchDereg] gNB socket is dead and reconnect failed")
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": -1, "action": "deregister-all", "status": "error",
+                "message": "gNB socket is dead and reconnect failed"
+            })
+            return
+        if gnb_status == "reconnected":
+            logger.warning("[BatchDereg] gNB reconnected — AMF lost UE contexts. Please re-run the test.")
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": -1, "action": "deregister-all", "status": "error",
+                "message": "gNB connection was lost and reconnected. AMF lost UE context — please re-run the test."
+            })
+            return
+
+        total = len(ue_indices)
+        counter_lock = threading.Lock()
+        completed = [0]
+
+        def _deregister_one(idx):
+            try:
+                ue = runner.gnb.ues[idx]
+                ue_id = getattr(ue, 'supi', f'UE#{idx}')
+
+                if not ue.registered:
+                    logger.info(f"[BatchDereg] UE#{idx} ({ue_id}) already deregistered, skipping")
+                    return
+
+                try:
+                    _ue_store().append_event(idx, "deregister_started", f"Batch deregister for {ue_id}")
+                except Exception:
+                    pass
+
+                t_start = time.time()
+                ue.deregister_event.clear()
+                msg = ue.send_deregistration_request()
+                gnb.message_queue.put(msg)
+                logger.info(f"[BatchDereg] Sent Deregistration Request for {ue_id}")
+
+                ue.deregister_event.wait(timeout=30)
+
+                t_done = time.time()
+                dereg_lat = round((t_done - t_start) * 1000, 1)
+
+                try:
+                    existing = _ue_store().get_ue(idx)
+                    lat = existing.get("latency_ms", {}) if existing else {}
+                    lat["deregister"] = dereg_lat
+                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": "deregistered"})
+                    _ue_store().append_event(idx, "deregister_complete", f"Deregistered in {dereg_lat}ms")
+                except Exception:
+                    pass
+
+            except Exception as e:
+                logger.error(f"[BatchDereg] Error for UE#{idx}: {e}")
+            finally:
+                with counter_lock:
+                    completed[0] += 1
+                    c = completed[0]
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "deregister-all", "status": "progress",
+                    "message": f"Deregistered {c}/{total} UEs"
+                })
+
+        threads = []
+        for idx in ue_indices:
+            if cancel_event and _test_state.get("running") and cancel_event.is_set():
+                break
+            t = threading.Thread(target=_deregister_one, args=(idx,), daemon=True)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join()
+
+        _refresh_ue_list(runner)
+        ws_hub.broadcast_sync("ue_action_complete", {
+            "ue_index": -1, "action": "deregister-all", "status": "completed",
+            "message": f"Batch deregister completed for {total} UEs"
+        })
+
+    except Exception as e:
+        logger.error(f"[BatchDereg] Error: {e}")
+        ws_hub.broadcast_sync("ue_action_complete", {
+            "ue_index": -1, "action": "deregister-all", "status": "error",
+            "message": str(e)
+        })
+    finally:
+        _batch_in_progress = False
+
+
+def _execute_batch_service_request(ue_indices: List[int]):
+    """Background thread to trigger user-inactivity + service request for multiple UEs concurrently."""
+    global _batch_in_progress
+    _batch_in_progress = True
+    try:
+        with _test_lock:
+            runner = _test_state.get("runner")
+            if not runner or not runner.gnb:
+                return
+            gnb = runner.gnb
+            core_network = _test_state.get("core_network", "free5gc")
+            cancel_event = _test_state.get("cancel_event")
+
+        ws_hub.broadcast_sync("ue_action_progress", {
+            "ue_index": -1, "action": "service-request-all", "status": "started",
+            "message": f"Batch service request started for {len(ue_indices)} UEs"
+        })
+
+        gnb_status = _ensure_gnb_alive(gnb)
+        if gnb_status == "dead":
+            logger.error("[BatchSR] gNB socket is dead and reconnect failed")
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": -1, "action": "service-request-all", "status": "error",
+                "message": "gNB socket is dead and reconnect failed"
+            })
+            return
+        if gnb_status == "reconnected":
+            logger.warning("[BatchSR] gNB reconnected — AMF lost UE contexts. Please re-run the test.")
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": -1, "action": "service-request-all", "status": "error",
+                "message": "gNB connection was lost and reconnected. AMF lost UE context — please re-run the test."
+            })
+            return
+
+        total = len(ue_indices)
+        counter_lock = threading.Lock()
+        completed = [0]
+
+        def _service_request_one(idx):
+            try:
+                ue = runner.gnb.ues[idx]
+                ue_id = getattr(ue, 'supi', f'UE#{idx}')
+
+                if not ue.registered:
+                    logger.info(f"[BatchSR] UE#{idx} ({ue_id}) not registered, skipping")
+                    return
+
+                try:
+                    _ue_store().append_event(idx, "context_release_request", f"Batch service request for {ue_id}")
+                except Exception:
+                    pass
+
+                # Step 1: Release UE context
+                t_sr_start = time.time()
+                ue.context_release_event.clear()
+                ue.paging_event.clear()
+                ue.service_accept_event.clear()
+                msg = ue.release_ue_context()
+                gnb.message_queue.put(msg)
+                logger.info(f"[BatchSR] Sent UE Context Release Request for {ue_id}")
+
+                # Wait for context release
+                ue.context_release_event.wait(timeout=10)
+
+                if not ue.context_released:
+                    logger.warning(f"[BatchSR] Context release timed out for {ue_id}")
+                    try:
+                        _ue_store().append_event(idx, "context_release_timeout", f"Context release timed out for {ue_id}")
+                    except Exception:
+                        pass
+                    return
+
+                try:
+                    _ue_store().append_event(idx, "context_released", f"Context released for {ue_id}")
+                except Exception:
+                    pass
+
+                # Step 2: Wait for Paging (Open5GS only)
+                if core_network == "open5gs":
+                    ue.paging_event.wait(timeout=15)
+                    if ue.paging_received:
+                        try:
+                            _ue_store().append_event(idx, "paging_received", f"Paging received for {ue_id}")
+                        except Exception:
+                            pass
+
+                # Step 3: Send Service Request
+                ue.paging_received = False
+                try:
+                    _ue_store().append_event(idx, "service_request_sent", f"Service Request for {ue_id}")
+                except Exception:
+                    pass
+
+                msg = ue.send_service_request()
+                gnb.message_queue.put(msg)
+                logger.info(f"[BatchSR] Sent Service Request for {ue_id}")
+
+                # Wait for Service Accept
+                ue.service_accept_event.wait(timeout=30)
+
+                t_sr_done = time.time()
+                sr_lat = round((t_sr_done - t_sr_start) * 1000, 1)
+
+                # Update Redis
+                try:
+                    existing = _ue_store().get_ue(idx)
+                    lat = existing.get("latency_ms", {}) if existing else {}
+                    lat["service_request"] = sr_lat
+                    state = "success" if ue.service_accepted else "timeout"
+                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
+                    _ue_store().append_event(idx,
+                        "service_accepted" if ue.service_accepted else "service_request_timeout",
+                        f"Service Request {'accepted' if ue.service_accepted else 'timed out'} in {sr_lat}ms")
+                except Exception:
+                    pass
+
+            except Exception as e:
+                logger.error(f"[BatchSR] Error for UE#{idx}: {e}")
+            finally:
+                with counter_lock:
+                    completed[0] += 1
+                    c = completed[0]
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "service-request-all", "status": "progress",
+                    "message": f"Service request {c}/{total} UEs"
+                })
+
+        threads = []
+        for idx in ue_indices:
+            if cancel_event and _test_state.get("running") and cancel_event.is_set():
+                break
+            t = threading.Thread(target=_service_request_one, args=(idx,), daemon=True)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join()
+
+        _refresh_ue_list(runner)
+        ws_hub.broadcast_sync("ue_action_complete", {
+            "ue_index": -1, "action": "service-request-all", "status": "completed",
+            "message": f"Batch service request completed for {total} UEs"
+        })
+
+    except Exception as e:
+        logger.error(f"[BatchSR] Error: {e}")
+        ws_hub.broadcast_sync("ue_action_complete", {
+            "ue_index": -1, "action": "service-request-all", "status": "error",
+            "message": str(e)
+        })
+    finally:
+        _batch_in_progress = False
 
 
 def _on_ue_state_change(ue_index: int, ue, event_name: str):
@@ -315,7 +707,8 @@ def _on_ue_state_change(ue_index: int, ue, event_name: str):
     try:
         with _test_lock:
             runner = _test_state.get("runner")
-        if runner:
+        # Skip refresh during batch operations — the batch handler will do a final refresh
+        if runner and not _batch_in_progress:
             _refresh_ue_list(runner)
     except Exception:
         pass
@@ -344,20 +737,26 @@ def _ensure_gnb_alive(gnb):
         f"sender={sender_ok}, acceptor={acceptor_ok}"
     )
 
+    if socket_ok and running_ok and sender_ok and acceptor_ok:
+        return "alive"
+
     if socket_ok and running_ok:
-        # Restart dead threads if needed
+        # Socket is OK but threads died — likely a transient issue
+        # Restart dead threads
         if not sender_ok:
             logger.warning("[GNB] Sender thread dead — restarting")
+            gnb.running = True
             gnb.sender_thread = threading.Thread(target=gnb._sender, daemon=True)
             gnb.sender_thread.start()
         if not acceptor_ok:
             logger.warning("[GNB] Acceptor thread dead — restarting")
+            gnb.running = True
             gnb.message_thread = threading.Thread(target=gnb._acceptor, daemon=True)
             gnb.message_thread.start()
         return "alive"
 
     # Socket is dead — full reconnect
-    logger.warning("[GNB] Socket dead — performing full reconnect")
+    logger.warning("[GNB] Socket dead or not running — performing full reconnect")
     try:
         gnb.reconnect()
         return "reconnected"
@@ -366,8 +765,64 @@ def _ensure_gnb_alive(gnb):
         return "dead"
 
 
-def _execute_batch_release_pdu(ue_indices: List[int]):
-    """Background thread to release PDU sessions for multiple UEs."""
+def _ensure_ue_registered_and_pdu(ue, gnb, ue_index, ue_id, cancel_event=None):
+    """Ensure UE is registered and has PDU session established.
+    If not, trigger re-registration and wait for completion.
+    Returns (success: bool, message: str)
+    """
+    if cancel_event and cancel_event.is_set():
+        return False, "cancelled"
+
+    if ue.registered and ue.dnn_internet_connected:
+        return True, "already registered"
+
+    # Reset UE state for fresh registration
+    ue.registered = False
+    ue.context_released = False
+    ue.dnn_internet_connected = False
+    ue.dnn2_ims_connected = False
+    ue.ue_state = 0x0
+    ue._removed = False
+    ue.t_start = None
+    ue.t_rrc = None
+    ue.t_auth_sec = None
+    ue.t_registered = None
+    ue.t_dnn1_done = None
+    ue.t_dnn2_done = None
+    ue.pdu_establish_event.clear()
+
+    try:
+        _ue_store().append_event(ue_index, "oneclick_reregister", f"Re-registering {ue_id}")
+    except Exception:
+        pass
+
+    msg = ue.send_initial_ue_message()
+    gnb.message_queue.put(msg)
+
+    # Wait for registration + PDU establishment
+    ue.pdu_establish_event.wait(timeout=60)
+
+    if ue.registered and ue.dnn_internet_connected:
+        return True, "re-registered successfully"
+    elif ue.registered:
+        return True, "re-registered (PDU pending)"
+    else:
+        return False, "re-registration timed out"
+
+
+def _execute_one_click_test(ue_indices: List[int]):
+    """Background thread to execute one-click test for multiple UEs concurrently.
+
+    For each UE, executes in sequence:
+    1. Ensure registered + PDU established
+    2. Deregister
+    3. Re-register + PDU establish
+    4. Release PDU session
+    5. Re-register + PDU establish
+    6. Service Request (user-inactivity)
+    """
+    global _batch_in_progress
+    _batch_in_progress = True
     try:
         with _test_lock:
             runner = _test_state.get("runner")
@@ -375,6 +830,227 @@ def _execute_batch_release_pdu(ue_indices: List[int]):
                 return
             gnb = runner.gnb
             core_network = _test_state.get("core_network", "free5gc")
+            cancel_event = _test_state.get("cancel_event")
+
+        ws_hub.broadcast_sync("ue_action_progress", {
+            "ue_index": -1, "action": "one-click-test", "status": "started",
+            "message": f"One-click test started for {len(ue_indices)} UEs"
+        })
+
+        gnb_status = _ensure_gnb_alive(gnb)
+        if gnb_status == "dead":
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": -1, "action": "one-click-test", "status": "error",
+                "message": "gNB socket is dead and reconnect failed"
+            })
+            return
+        if gnb_status == "reconnected":
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": -1, "action": "one-click-test", "status": "error",
+                "message": "gNB connection was lost and reconnected. AMF lost UE context — please re-run the test."
+            })
+            return
+
+        total = len(ue_indices)
+        counter_lock = threading.Lock()
+        completed = [0]
+
+        def _one_click_one(idx):
+            try:
+                ue = runner.gnb.ues[idx]
+                ue_id = getattr(ue, 'supi', f'UE#{idx}')
+
+                if cancel_event and cancel_event.is_set():
+                    return
+
+                # Step 1: Ensure registered + PDU established
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "progress",
+                    "message": f"UE {ue_id}: Ensuring registration..."
+                })
+                ok, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
+                if not ok:
+                    ws_hub.broadcast_sync("ue_action_progress", {
+                        "ue_index": idx, "action": "one-click-test", "status": "error",
+                        "message": f"UE {ue_id}: Failed to register ({msg})"
+                    })
+                    return
+
+                # Step 2: Deregister
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "progress",
+                    "message": f"UE {ue_id}: Deregistering..."
+                })
+                t_start = time.time()
+                ue.deregister_event.clear()
+                msg = ue.send_deregistration_request()
+                gnb.message_queue.put(msg)
+                ue.deregister_event.wait(timeout=30)
+                dereg_lat = round((time.time() - t_start) * 1000, 1)
+
+                try:
+                    existing = _ue_store().get_ue(idx)
+                    lat = existing.get("latency_ms", {}) if existing else {}
+                    lat["deregister"] = dereg_lat
+                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": "deregistered"})
+                    _ue_store().append_event(idx, "oneclick_deregister", f"Deregistered in {dereg_lat}ms")
+                except Exception:
+                    pass
+
+                # Step 3: Re-register after deregister
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "progress",
+                    "message": f"UE {ue_id}: Re-registering after deregister..."
+                })
+                ok, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
+                if not ok:
+                    ws_hub.broadcast_sync("ue_action_progress", {
+                        "ue_index": idx, "action": "one-click-test", "status": "error",
+                        "message": f"UE {ue_id}: Failed to re-register after deregister ({msg})"
+                    })
+                    return
+
+                # Step 4: Release PDU session
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "progress",
+                    "message": f"UE {ue_id}: Releasing PDU session..."
+                })
+                t_start = time.time()
+                ue.pdu_release_event.clear()
+                pdu_sess_id = ue.dnn_internet_pdu_sess_id or 1
+                msg = ue.send_pdu_session_release_request(pdu_sess_id)
+                gnb.message_queue.put(msg)
+                ue.pdu_release_event.wait(timeout=30)
+                release_lat = round((time.time() - t_start) * 1000, 1)
+
+                try:
+                    existing = _ue_store().get_ue(idx)
+                    lat = existing.get("latency_ms", {}) if existing else {}
+                    lat["release"] = release_lat
+                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
+                    _ue_store().append_event(idx, "oneclick_release", f"Released in {release_lat}ms")
+                except Exception:
+                    pass
+
+                # Step 5: Re-register after release
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "progress",
+                    "message": f"UE {ue_id}: Re-registering after release..."
+                })
+                ok, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
+                if not ok:
+                    ws_hub.broadcast_sync("ue_action_progress", {
+                        "ue_index": idx, "action": "one-click-test", "status": "error",
+                        "message": f"UE {ue_id}: Failed to re-register after release ({msg})"
+                    })
+                    return
+
+                # Step 6: Service Request (user-inactivity)
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "progress",
+                    "message": f"UE {ue_id}: Executing service request..."
+                })
+                t_sr_start = time.time()
+                ue.context_release_event.clear()
+                ue.paging_event.clear()
+                ue.service_accept_event.clear()
+                msg = ue.release_ue_context()
+                gnb.message_queue.put(msg)
+                ue.context_release_event.wait(timeout=10)
+
+                if not ue.context_released:
+                    ws_hub.broadcast_sync("ue_action_progress", {
+                        "ue_index": idx, "action": "one-click-test", "status": "error",
+                        "message": f"UE {ue_id}: Context release timed out"
+                    })
+                    return
+
+                # Wait for Paging (Open5GS)
+                if core_network == "open5gs":
+                    ue.paging_event.wait(timeout=15)
+
+                # Send Service Request
+                ue.paging_received = False
+                msg = ue.send_service_request()
+                gnb.message_queue.put(msg)
+                ue.service_accept_event.wait(timeout=30)
+
+                t_sr_done = time.time()
+                sr_lat = round((t_sr_done - t_sr_start) * 1000, 1)
+
+                # Update Redis
+                try:
+                    existing = _ue_store().get_ue(idx)
+                    lat = existing.get("latency_ms", {}) if existing else {}
+                    lat["service_request"] = sr_lat
+                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
+                    _ue_store().append_event(idx, "oneclick_service_request",
+                        f"Service Request {'accepted' if ue.service_accepted else 'timed out'} in {sr_lat}ms")
+                except Exception:
+                    pass
+
+                # Final status
+                msg_text = f"One-click test completed for {ue_id}"
+                _refresh_ue_list(runner)
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "completed",
+                    "message": msg_text
+                })
+
+            except Exception as e:
+                logger.error(f"[OneClick] Error for UE#{idx}: {e}")
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "one-click-test", "status": "error",
+                    "message": f"UE#{idx}: {str(e)}"
+                })
+            finally:
+                with counter_lock:
+                    completed[0] += 1
+                    c = completed[0]
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": -1, "action": "one-click-test", "status": "progress",
+                    "message": f"One-click test {c}/{total} UEs completed"
+                })
+
+        threads = []
+        for idx in ue_indices:
+            if cancel_event and _test_state.get("running") and cancel_event.is_set():
+                break
+            t = threading.Thread(target=_one_click_one, args=(idx,), daemon=True)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join()
+
+        _refresh_ue_list(runner)
+        ws_hub.broadcast_sync("ue_action_complete", {
+            "ue_index": -1, "action": "one-click-test", "status": "completed",
+            "message": f"One-click test completed for {total} UEs"
+        })
+
+    except Exception as e:
+        logger.error(f"[OneClick] Error: {e}")
+        ws_hub.broadcast_sync("ue_action_complete", {
+            "ue_index": -1, "action": "one-click-test", "status": "error",
+            "message": str(e)
+        })
+    finally:
+        _batch_in_progress = False
+
+
+def _execute_batch_release_pdu(ue_indices: List[int]):
+    """Background thread to release PDU sessions for multiple UEs concurrently."""
+    global _batch_in_progress
+    _batch_in_progress = True
+    try:
+        with _test_lock:
+            runner = _test_state.get("runner")
+            if not runner or not runner.gnb:
+                return
+            gnb = runner.gnb
+            core_network = _test_state.get("core_network", "free5gc")
+            cancel_event = _test_state.get("cancel_event")
 
         ws_hub.broadcast_sync("ue_action_progress", {
             "ue_index": -1, "action": "release-all-pdu", "status": "started",
@@ -398,7 +1074,11 @@ def _execute_batch_release_pdu(ue_indices: List[int]):
             })
             return
 
-        for idx in ue_indices:
+        total = len(ue_indices)
+        counter_lock = threading.Lock()
+        completed = [0]
+
+        def _release_one(idx):
             try:
                 ue = runner.gnb.ues[idx]
                 ue_id = getattr(ue, 'supi', f'UE#{idx}')
@@ -410,6 +1090,7 @@ def _execute_batch_release_pdu(ue_indices: List[int]):
                     pass
 
                 t_start = time.time()
+                ue.pdu_release_event.clear()
                 for pdu_sess_id in [ue.dnn_internet_pdu_sess_id, ue.dnn2_ims_pdu_sess_id]:
                     if pdu_sess_id is None:
                         continue
@@ -418,10 +1099,7 @@ def _execute_batch_release_pdu(ue_indices: List[int]):
                     logger.info(f"[BatchRelease] Sent PDU Session Release for {ue_id}, session {pdu_sess_id}")
 
                 # Wait for release
-                for _ in range(60):
-                    if not ue.dnn_internet_connected and not ue.dnn2_ims_connected:
-                        break
-                    time.sleep(0.5)
+                ue.pdu_release_event.wait(timeout=30)
 
                 t_done = time.time()
                 release_lat = round((t_done - t_start) * 1000, 1)
@@ -438,11 +1116,30 @@ def _execute_batch_release_pdu(ue_indices: List[int]):
 
             except Exception as e:
                 logger.error(f"[BatchRelease] Error for UE#{idx}: {e}")
+            finally:
+                with counter_lock:
+                    completed[0] += 1
+                    c = completed[0]
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": idx, "action": "release-all-pdu", "status": "progress",
+                    "message": f"Released {c}/{total} UEs"
+                })
+
+        threads = []
+        for idx in ue_indices:
+            if cancel_event and _test_state.get("running") and cancel_event.is_set():
+                break
+            t = threading.Thread(target=_release_one, args=(idx,), daemon=True)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join()
 
         _refresh_ue_list(runner)
         ws_hub.broadcast_sync("ue_action_complete", {
             "ue_index": -1, "action": "release-all-pdu", "status": "completed",
-            "message": f"Batch PDU release completed for {len(ue_indices)} UEs"
+            "message": f"Batch PDU release completed for {total} UEs"
         })
 
     except Exception as e:
@@ -451,6 +1148,8 @@ def _execute_batch_release_pdu(ue_indices: List[int]):
             "ue_index": -1, "action": "release-all-pdu", "status": "error",
             "message": str(e)
         })
+    finally:
+        _batch_in_progress = False
 
 
 def _execute_ue_action(ue_index: int, action: str, params: dict):
@@ -482,17 +1181,17 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
             })
             return
         if gnb_status == "reconnected":
-            # After reconnect, AMF has no UE contexts — UE actions will fail with
-            # "Unknown NGAP UE ID".  Mark UE as needing re-registration.
-            logger.warning(
-                f"[Action] gNB was reconnected — AMF lost UE context for {ue_id}. "
-                f"UE needs to re-register before further actions."
-            )
-            ws_hub.broadcast_sync("ue_action_complete", {
-                "ue_index": ue_index, "action": action, "status": "error",
-                "message": "gNB connection was lost and reconnected. AMF lost UE context — please re-run the test to re-register UEs."
-            })
-            return
+            # After reconnect, AMF has no UE contexts.  Only re-register is allowed.
+            if action != "re-register":
+                logger.warning(
+                    f"[Action] gNB was reconnected — AMF lost UE context for {ue_id}. "
+                    f"Only re-register is available."
+                )
+                ws_hub.broadcast_sync("ue_action_complete", {
+                    "ue_index": ue_index, "action": action, "status": "error",
+                    "message": "gNB connection was lost. AMF lost UE context — please use Re-register or re-run the test."
+                })
+                return
 
         ws_hub.broadcast_sync("ue_action_progress", {
             "ue_index": ue_index, "action": action, "status": "started",
@@ -534,6 +1233,7 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
                 pass
 
             t_start = time.time()
+            ue.pdu_release_event.clear()
             msg = ue.send_pdu_session_release_request(pdu_sess_id)
             logger.info(f"[Action] Message built, type={type(msg)}, putting in queue")
             gnb.message_queue.put(msg)
@@ -541,20 +1241,25 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
             logger.info(f"[Action] Sent PDU Session Release Request for {ue_id}, session {pdu_sess_id}")
 
             # Wait for release to complete
-            logger.info(f"[Action] Waiting for dnn_internet_connected to become False...")
-            for i in range(60):  # 30s timeout
-                if not ue.dnn_internet_connected:
-                    logger.info(f"[Action] dnn_internet_connected is False after {i*0.5}s")
-                    break
-                time.sleep(0.5)
+            ue.pdu_release_event.wait(timeout=30)
 
             t_done = time.time()
             release_lat = round((t_done - t_start) * 1000, 1)
 
             if not ue.dnn_internet_connected:
-                state = "success"
-                msg_text = f"PDU session {pdu_sess_id} released for {ue_id} ({release_lat}ms)"
-                logger.info(f"[Action] {msg_text}")
+                # Check if AMF released the context (ErrorIndication) vs normal release
+                if ue.context_released:
+                    state = "warning"
+                    msg_text = f"PDU session already released by AMF for {ue_id} (context released)"
+                    logger.warning(f"[Action] {msg_text}")
+                    try:
+                        _ue_store().append_event(ue_index, "pdu_release_amf_context_lost", msg_text)
+                    except Exception:
+                        pass
+                else:
+                    state = "success"
+                    msg_text = f"PDU session {pdu_sess_id} released for {ue_id} ({release_lat}ms)"
+                    logger.info(f"[Action] {msg_text}")
             else:
                 state = "timeout"
                 msg_text = f"PDU release timed out for {ue_id}"
@@ -585,15 +1290,15 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
 
             # Step 1: Release UE context (gNB-initiated)
             t_sr_start = time.time()
+            ue.context_release_event.clear()
+            ue.paging_event.clear()
+            ue.service_accept_event.clear()
             msg = ue.release_ue_context()
             gnb.message_queue.put(msg)
             logger.info(f"[Action] Sent UE Context Release Request for {ue_id}")
 
             # Wait for context release
-            for _ in range(20):  # 10s timeout
-                if ue.context_released:
-                    break
-                time.sleep(0.5)
+            ue.context_release_event.wait(timeout=10)
 
             if not ue.context_released:
                 ws_hub.broadcast_sync("ue_action_complete", {
@@ -615,15 +1320,13 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
             # Step 2: Wait for Paging (Open5GS) or skip (Free5GC)
             if core_network == "open5gs":
                 logger.info(f"[Action] Waiting for Paging from Open5GS for {ue_id}")
-                for _ in range(30):  # 15s timeout
-                    if ue.paging_received:
-                        try:
-                            _ue_store().append_event(ue_index, "paging_received", f"Paging received for {ue_id}")
-                        except Exception:
-                            pass
-                        break
-                    time.sleep(0.5)
-                if not ue.paging_received:
+                ue.paging_event.wait(timeout=15)
+                if ue.paging_received:
+                    try:
+                        _ue_store().append_event(ue_index, "paging_received", f"Paging received for {ue_id}")
+                    except Exception:
+                        pass
+                else:
                     logger.warning(f"[Action] Paging not received for {ue_id}, proceeding anyway")
 
             # Step 3: Send Service Request
@@ -638,10 +1341,7 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
             logger.info(f"[Action] Sent Service Request for {ue_id}")
 
             # Wait for Service Accept
-            for _ in range(60):  # 30s timeout
-                if ue.service_accepted:
-                    break
-                time.sleep(0.5)
+            ue.service_accept_event.wait(timeout=30)
 
             t_sr_done = time.time()
             sr_lat = round((t_sr_done - t_sr_start) * 1000, 1)
@@ -680,27 +1380,34 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
                 pass
 
             t_start = time.time()
+            ue.deregister_event.clear()
             msg = ue.send_deregistration_request()
             gnb.message_queue.put(msg)
             logger.info(f"[Action] Sent Deregistration Request for {ue_id}")
 
             # Wait for deregistration + context release
-            for _ in range(60):  # 30s timeout
-                if not ue.registered:
-                    break
-                time.sleep(0.5)
+            ue.deregister_event.wait(timeout=30)
 
             t_done = time.time()
             dereg_lat = round((t_done - t_start) * 1000, 1)
 
             if not ue.registered:
-                state = "success"
-                msg_text = f"UE {ue_id} deregistered successfully ({dereg_lat}ms)"
-                logger.info(f"[Action] {msg_text}")
-                try:
-                    _ue_store().append_event(ue_index, "deregister_complete", msg_text)
-                except Exception:
-                    pass
+                if ue.context_released:
+                    state = "warning"
+                    msg_text = f"UE {ue_id} context was already released by AMF"
+                    logger.warning(f"[Action] {msg_text}")
+                    try:
+                        _ue_store().append_event(ue_index, "deregister_amf_context_lost", msg_text)
+                    except Exception:
+                        pass
+                else:
+                    state = "success"
+                    msg_text = f"UE {ue_id} deregistered successfully ({dereg_lat}ms)"
+                    logger.info(f"[Action] {msg_text}")
+                    try:
+                        _ue_store().append_event(ue_index, "deregister_complete", msg_text)
+                    except Exception:
+                        pass
             else:
                 state = "timeout"
                 msg_text = f"Deregistration timed out for {ue_id}"
@@ -715,8 +1422,112 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
             except Exception:
                 pass
 
-            # Remove UE from the list
-            _remove_ue_from_list(runner, ue_index)
+            # Keep UE in the list (deregistered state) so re-registration is possible
+            _refresh_ue_list(runner)
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": ue_index, "action": action, "status": state, "message": msg_text
+            })
+
+        elif action == "establish-pdu":
+            pdu_sess_id = params.get("pdu_session_id", 1)
+            logger.info(f"[Action] Building PDU Session Establishment Request for session {pdu_sess_id}")
+
+            try:
+                _ue_store().append_event(ue_index, "pdu_establish_started", f"PDU session {pdu_sess_id}")
+            except Exception:
+                pass
+
+            t_start = time.time()
+            ue.pdu_establish_event.clear()
+            msg = ue.send_pdusession_establishment_request(ue.dnn, pdu_sess_id)
+            gnb.message_queue.put(msg)
+            logger.info(f"[Action] Sent PDU Session Establishment Request for {ue_id}, session {pdu_sess_id}")
+
+            # Wait for establishment to complete
+            ue.pdu_establish_event.wait(timeout=30)
+
+            t_done = time.time()
+            establish_lat = round((t_done - t_start) * 1000, 1)
+
+            if ue.dnn_internet_connected:
+                state = "success"
+                msg_text = f"PDU session {pdu_sess_id} established for {ue_id} ({establish_lat}ms)"
+                logger.info(f"[Action] {msg_text}")
+            else:
+                state = "timeout"
+                msg_text = f"PDU establishment timed out for {ue_id}"
+                logger.warning(f"[Action] {msg_text}")
+
+            # Update Redis
+            try:
+                existing = _ue_store().get_ue(ue_index)
+                lat = existing.get("latency_ms", {}) if existing else {}
+                lat["establish_pdu"] = establish_lat
+                _ue_store().update_ue(ue_index, {"latency_ms": lat, "state": _determine_ue_state(ue)})
+                _ue_store().append_event(ue_index, "pdu_establish_complete", msg_text)
+            except Exception:
+                pass
+
+            _refresh_ue_list(runner)
+            ws_hub.broadcast_sync("ue_action_complete", {
+                "ue_index": ue_index, "action": action, "status": state, "message": msg_text
+            })
+
+        elif action == "re-register":
+            logger.info(f"[Action] Re-registering UE {ue_id}")
+
+            try:
+                _ue_store().append_event(ue_index, "reregister_started", f"Re-registration for {ue_id}")
+            except Exception:
+                pass
+
+            # Reset UE state for fresh registration
+            ue.registered = False
+            ue.context_released = False
+            ue.dnn_internet_connected = False
+            ue.dnn2_ims_connected = False
+            ue.ue_state = 0x0
+            ue._removed = False
+            ue.t_start = None
+            ue.t_rrc = None
+            ue.t_auth_sec = None
+            ue.t_registered = None
+            ue.t_dnn1_done = None
+            ue.t_dnn2_done = None
+            ue.pdu_establish_event.clear()
+
+            t_start = time.time()
+            msg = ue.send_initial_ue_message()
+            gnb.message_queue.put(msg)
+            logger.info(f"[Action] Sent Initial UE Message for re-registration of {ue_id}")
+
+            # Wait for full registration + PDU establishment
+            ue.pdu_establish_event.wait(timeout=60)
+
+            t_done = time.time()
+            rereg_lat = round((t_done - t_start) * 1000, 1)
+
+            if ue.registered and ue.dnn_internet_connected:
+                state = "success"
+                msg_text = f"UE {ue_id} re-registered successfully ({rereg_lat}ms)"
+                logger.info(f"[Action] {msg_text}")
+            elif ue.registered:
+                state = "success"
+                msg_text = f"UE {ue_id} re-registered (PDU pending) ({rereg_lat}ms)"
+                logger.info(f"[Action] {msg_text}")
+            else:
+                state = "timeout"
+                msg_text = f"Re-registration timed out for {ue_id}"
+                logger.warning(f"[Action] {msg_text}")
+
+            # Update Redis
+            try:
+                _ue_store().update_ue(ue_index, {"state": _determine_ue_state(ue), "registered": ue.registered})
+                _ue_store().append_event(ue_index, "reregister_complete", msg_text)
+            except Exception:
+                pass
+
+            _refresh_ue_list(runner)
             ws_hub.broadcast_sync("ue_action_complete", {
                 "ue_index": ue_index, "action": action, "status": state, "message": msg_text
             })
@@ -734,12 +1545,13 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
 
 def _refresh_ue_list(runner):
     """Refresh the UE list in _test_state and Redis, then recompute latency stats."""
-    try:
-        _collect_5g_results(runner)
-        # Re-compute box plot stats to include any new action latencies
-        _finalize_test()
-    except Exception as e:
-        logger.error(f"Error refreshing UE list: {e}")
+    with _batch_lock:
+        try:
+            _collect_5g_results(runner)
+            # Re-compute box plot stats to include any new action latencies
+            _finalize_test()
+        except Exception as e:
+            logger.error(f"Error refreshing UE list: {e}")
 
 
 def _remove_ue_from_list(runner, ue_index: int):
@@ -985,9 +1797,18 @@ def _run_5g_test(req: TestStartRequest, cancel_event: threading.Event):
             mcc=mcc, mnc=mnc, gnb_address=gnb_address, amf_address=amf_address,
             number_of_ues=req.count, start_imsi=start_imsi, ki=ki, opc=opc,
             dnn=dnn, tac=tac, gnb_nr_cell_id=gnb_nr_cell_id, log_level=log_level,
+            ue_init_delay=req.ue_init_delay,
         )
 
         with _test_lock:
+            # Close OLD runner's gNB before replacing it
+            old_runner = _test_state.get("runner")
+            if old_runner and getattr(old_runner, 'gnb', None):
+                try:
+                    old_runner.gnb.close()
+                    logger.info("[5GTest] Closed old gNB connection")
+                except Exception as e:
+                    logger.warning(f"[5GTest] Error closing old gNB: {e}")
             _test_state["runner"] = runner
 
         # Broadcast test start
@@ -1203,6 +2024,17 @@ def _determine_ue_state(ue) -> str:
     return "idle"
 
 
+def _format_teid_hex(teid):
+    """Convert TEID to hex string. Handles int, bytes, or string."""
+    if teid is None:
+        return "N/A"
+    if isinstance(teid, int):
+        return f"{teid:08x}"
+    if isinstance(teid, bytes):
+        return teid.hex()
+    return str(teid)
+
+
 def _collect_4g_results(runner):
     """Collect per-UE results from a 4G Integrated4GGNB."""
     ues = []
@@ -1212,7 +2044,7 @@ def _collect_4g_results(runner):
         sgw_teid = "N/A"
         for b in info.get("bearers", []):
             if b.get("sgw_teid") is not None:
-                sgw_teid = str(b["sgw_teid"])
+                sgw_teid = _format_teid_hex(b["sgw_teid"])
 
         ue_data = {
             "imsi": info.get("imsi", ""),
@@ -1303,6 +2135,9 @@ def _finalize_test():
 
     with _test_lock:
         _test_state["latency_stats"] = latency_stats
+
+    # Broadcast updated latency stats so frontend box plot updates in real-time
+    ws_hub.broadcast_sync("latency_stats_update", latency_stats)
 
     # Persist to history
     _save_history()

@@ -5,7 +5,7 @@ import {
   getTestUEs, getLatencyStats, listProfiles,
   exportUEsCSV, exportLatencyJSON, exportFullJSON,
   releasePduSession, triggerUserInactivity, deregisterUE,
-  releaseAllPduSessions, getUEEvents,
+  releaseAllPduSessions, deregisterAllUEs, serviceRequestAllUEs, oneClickTest, getUEEvents,
 } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -57,6 +57,10 @@ export default function UETest() {
         setLatencyStats(r.data);
         setShowBoxPlot(true);
       }).catch(() => {});
+    }
+    if (type === 'latency_stats_update') {
+      setLatencyStats(data);
+      setShowBoxPlot(true);
     }
     if (type === 'ue_action_progress') {
       setActionMsg(data.message || '');
@@ -130,6 +134,39 @@ export default function UETest() {
     setActionMsg('Releasing all PDU sessions...');
     try {
       await releaseAllPduSessions();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeregisterAll = async () => {
+    setActionLoading(true);
+    setActionMsg('Deregistering all UEs...');
+    try {
+      await deregisterAllUEs();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleServiceRequestAll = async () => {
+    setActionLoading(true);
+    setActionMsg('Triggering service request for all UEs...');
+    try {
+      await serviceRequestAllUEs();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleOneClickTest = async () => {
+    setActionLoading(true);
+    setActionMsg('One-click test started: deregister → release → service request...');
+    try {
+      await oneClickTest();
     } catch (e: any) {
       setActionMsg(e.response?.data?.error || e.message);
       setActionLoading(false);
@@ -234,6 +271,12 @@ export default function UETest() {
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <button className="btn btn-danger" onClick={handleReleaseAll} style={{ fontSize: '11px', padding: '4px 10px' }}>
                   Release All PDU
+                </button>
+                <button className="btn btn-danger" onClick={handleDeregisterAll} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                  Deregister All
+                </button>
+                <button className="btn btn-primary" onClick={handleServiceRequestAll} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                  Service Request All
                 </button>
                 <button className="btn btn-export" onClick={exportUEsCSV}>↓ Export CSV</button>
                 <button className="btn btn-export" onClick={exportLatencyJSON}>↓ Export JSON (Stats)</button>
