@@ -172,6 +172,35 @@ async def clear_redis():
     return {"status": "cleared"}
 
 
+@router.post("/test/restart")
+async def restart_service():
+    """Stop any running test, clear Redis, and reset all state."""
+    with _test_lock:
+        if _test_state["running"]:
+            cancel_event = _test_state.get("cancel_event")
+            if cancel_event:
+                cancel_event.set()
+            runner = _test_state.get("runner")
+            if runner:
+                try:
+                    runner.close()
+                except Exception as e:
+                    logger.error(f"Error closing runner: {e}")
+        _test_state.update({
+            "running": False, "mode": None, "core_network": None,
+            "parameters": {}, "start_time": None, "end_time": None,
+            "cancel_event": None, "runner": None,
+            "ues": [], "ngap_stats": {}, "latency_stats": {}, "error": None,
+        })
+    try:
+        _ue_store().clear_all()
+    except Exception as e:
+        logger.error(f"Error clearing Redis: {e}")
+        return {"error": str(e)}
+    ws_hub.broadcast_sync("service_restarted", {})
+    return {"status": "restarted"}
+
+
 @router.get("/test/status")
 async def get_test_status():
     """Get current test state."""

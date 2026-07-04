@@ -5,7 +5,7 @@ import {
 import {
   PlayCircleOutlined, StopOutlined, ThunderboltOutlined,
   DownloadOutlined, CloudServerOutlined, TableOutlined, BarChartOutlined,
-  WarningOutlined, DeleteOutlined,
+  WarningOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import {
@@ -14,7 +14,7 @@ import {
   getTestUEs, getLatencyStats, listProfiles,
   exportUEsCSV, exportLatencyJSON, exportFullJSON,
   releasePduSession, establishPduSession, triggerUserInactivity, deregisterUE, reregisterUE,
-  releaseAllPduSessions, deregisterAllUEs, serviceRequestAllUEs, clearRedis, getUEEvents,
+  releaseAllPduSessions, deregisterAllUEs, serviceRequestAllUEs, oneClickTest, restartService, clearRedis, getUEEvents,
 } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import Plot from '../components/Plot';
@@ -202,12 +202,27 @@ export default function Dashboard() {
     }
   };
 
-  const handleClearRedis = async () => {
-    if (!window.confirm('Clear all UE data from Redis? This cannot be undone.')) return;
+  const handleOneClickTest = async () => {
+    setActionLoading(true);
+    setActionMsg('One-click test started: deregister → release → service request...');
     try {
-      await clearRedis();
+      await oneClickTest();
+    } catch (e: any) {
+      setActionMsg(e.response?.data?.error || e.message);
+      setActionLoading(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    if (!window.confirm('Restart service? This will stop any running test and clear all UE data.')) return;
+    try {
+      await restartService();
       setUes([]); setLatencyStats({}); setShowBoxPlot(false);
-      setActionMsg('Redis cleared');
+      setSelectedIdx(null); setSelectedAction(null);
+      setEventLog([]); setShowEvents(false);
+      setActionMsg('Service restarted');
+      // Refresh page after a short delay to reconnect
+      setTimeout(() => window.location.reload(), 1500);
     } catch (e: any) {
       setActionMsg(e.response?.data?.error || e.message);
     }
@@ -291,8 +306,8 @@ export default function Dashboard() {
             </Tag>
           )}
           {!testRunning && (
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={handleClearRedis} style={{ marginLeft: 8 }}>
-              Clear Redis
+            <Button size="small" icon={<ReloadOutlined />} onClick={handleRestart} style={{ marginLeft: 8, fontSize: 12, color: '#1890ff', borderColor: '#1890ff' }}>
+              Reboot
             </Button>
           )}
         </Col>
@@ -368,6 +383,19 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Batch action toolbar — always visible regardless of view tab */}
+      {ues.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <Button size="small" danger icon={<WarningOutlined />} onClick={handleReleaseAll}>Release All PDU</Button>
+          <Button size="small" danger icon={<WarningOutlined />} onClick={handleDeregisterAll}>Deregister All</Button>
+          <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={handleServiceRequestAll}>Service Request All</Button>
+          <Button size="small" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', border: 'none' }} icon={<ThunderboltOutlined />} onClick={handleOneClickTest}>One-Click Test</Button>
+          <Button size="small" icon={<DownloadOutlined />} onClick={exportUEsCSV}>CSV</Button>
+          <Button size="small" icon={<DownloadOutlined />} onClick={exportLatencyJSON}>Stats</Button>
+          <Button size="small" icon={<DownloadOutlined />} onClick={exportFullJSON}>Full</Button>
+        </div>
+      )}
+
       {/* UE Results / Box Plot view toggle + card */}
       {(ues.length > 0 || (showBoxPlot && plotData.length > 0)) && (
         <Card
@@ -398,18 +426,6 @@ export default function Dashboard() {
                 <Text type="secondary" style={{ fontSize: 12 }}>({ues.length} UEs)</Text>
               )}
             </Space>
-          }
-          extra={
-            viewTab === 'table' && (
-              <Space size="small">
-                <Button size="small" danger icon={<WarningOutlined />} onClick={handleReleaseAll}>Release All PDU</Button>
-                <Button size="small" danger icon={<WarningOutlined />} onClick={handleDeregisterAll}>Deregister All</Button>
-                <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={handleServiceRequestAll}>Service Request All</Button>
-                <Button size="small" icon={<DownloadOutlined />} onClick={exportUEsCSV}>CSV</Button>
-                <Button size="small" icon={<DownloadOutlined />} onClick={exportLatencyJSON}>Stats</Button>
-                <Button size="small" icon={<DownloadOutlined />} onClick={exportFullJSON}>Full</Button>
-              </Space>
-            )
           }
         >
           {viewTab === 'table' && ues.length > 0 && (
@@ -508,6 +524,7 @@ export default function Dashboard() {
                     background: selectedAction === a ? 'rgba(0,212,255,0.1)' : 'transparent',
                     color: selectedAction === a ? '#00d4ff' : '#94a3b8',
                     fontWeight: selectedAction === a ? 500 : 400,
+                    width: 130, textAlign: 'center', flexShrink: 0,
                   }}
                   onClick={() => setSelectedAction(a)}
                 >
