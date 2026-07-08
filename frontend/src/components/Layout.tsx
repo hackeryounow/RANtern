@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Layout as AntLayout, Menu, ConfigProvider, theme } from 'antd';
 import {
   DashboardOutlined,
-  BarChartOutlined,
   HistoryOutlined,
-  SettingOutlined,
+  PhoneOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -15,13 +14,13 @@ const { Sider, Content } = AntLayout;
 
 const navItems = [
   { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
-  { key: '/ngap-stats', icon: <BarChartOutlined />, label: 'NGAP Stats' },
+  { key: '/dialer', icon: <PhoneOutlined />, label: 'Dialer' },
   { key: '/history', icon: <HistoryOutlined />, label: 'History' },
-  { key: '/profile', icon: <SettingOutlined />, label: 'Profile' },
 ];
 
 export default function Layout() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const location = useLocation();
 
   const onClickMenu: MenuProps['onClick'] = () => {};
 
@@ -33,7 +32,7 @@ export default function Layout() {
           colorPrimary: '#00d4ff',
           colorBgContainer: '#111827',
           colorBgElevated: '#1a1f2e',
-          fontFamily: 'JetBrains Mono, monospace',
+          fontFamily: 'Consolas, Liberation Mono, Menlo, monospace',
         },
         components: {
           Layout: { siderBg: '#0d1117', bodyBg: '#0a0e17' },
@@ -42,6 +41,7 @@ export default function Layout() {
       }}
     >
       <AntLayout style={{ minHeight: '100vh' }}>
+        {/* Left sidebar */}
         <Sider
           collapsible
           collapsed={collapsed}
@@ -92,7 +92,7 @@ export default function Layout() {
             <Menu
               theme="dark"
               mode="inline"
-              selectedKeys={[]}
+              selectedKeys={[location.pathname]}
               items={navItems.map(item => ({
                 key: item.key,
                 icon: item.icon,
@@ -107,16 +107,17 @@ export default function Layout() {
             />
           </div>
 
-          {/* Collapse trigger at bottom */}
+          {/* Collapse trigger at bottom-right of sidebar */}
           <div
             style={{
-              borderTop: '1px solid #1e293b',
-              padding: '8px 0',
-              textAlign: 'center',
+              position: 'absolute',
+              bottom: 12,
+              right: collapsed ? 12 : 16,
               cursor: 'pointer',
               color: '#64748b',
               fontSize: 16,
               transition: 'color 0.2s',
+              padding: 4,
             }}
             onClick={() => setCollapsed(!collapsed)}
             onMouseEnter={e => (e.currentTarget.style.color = '#00d4ff')}

@@ -6,6 +6,7 @@ Run with: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 import os
 import sys
+import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -91,6 +92,17 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
+                continue
+            # Handle SIP-related JSON messages (参考 VoxEra)
+            try:
+                msg = json.loads(data)
+                msg_type = msg.get("type")
+                payload = msg.get("data", {})
+                if msg_type and msg_type.startswith(("sip_", "call_")):
+                    ws_hub.handle_sip_message(websocket, msg_type, payload)
+            except json.JSONDecodeError:
+                # Not JSON, ignore
+                pass
     except WebSocketDisconnect:
         await ws_hub.disconnect(websocket)
 

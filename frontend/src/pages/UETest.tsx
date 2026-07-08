@@ -188,7 +188,7 @@ export default function UETest() {
   const plotlyLayout: any = {
     paper_bgcolor: '#111827',
     plot_bgcolor: '#0a0e17',
-    font: { color: '#e0e7ff', family: 'JetBrains Mono, monospace', size: 11 },
+    font: { color: '#e0e7ff', family: 'Consolas, Liberation Mono, Menlo, monospace', size: 11 },
     margin: { t: 30, r: 20, b: 40, l: 60 },
     xaxis: { gridcolor: '#1e3a5f', zerolinecolor: '#1e3a5f' },
     yaxis: { title: 'Latency (ms)', gridcolor: '#1e3a5f', zerolinecolor: '#1e3a5f' },

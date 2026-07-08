@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Response, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from loguru import logger
@@ -431,9 +431,20 @@ async def service_request_all_ues():
 
 
 @router.post("/test/one-click-test")
-async def one_click_test():
+async def one_click_test(req: Request = None):
     """Execute one-click test for all UEs: deregister, release-pdu, service-request.
-    Each test is preceded by re-registration + PDU session establishment."""
+    Each test is preceded by re-registration + PDU session establishment.
+    Supports multiple rounds with configurable interval."""
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        pass
+    rounds = int(body.get("rounds", 1))
+    with _test_lock:
+        ue_init_delay = float(_test_state.get("parameters", {}).get("ue_init_delay", 0.3))
+    interval = float(body.get("interval", ue_init_delay))
+
     with _test_lock:
         runner = _test_state.get("runner")
         if not runner or not getattr(runner, 'gnb', None):
@@ -444,11 +455,11 @@ async def one_click_test():
 
     t = threading.Thread(
         target=_execute_one_click_test,
-        args=(ue_indices,),
+        args=(ue_indices, rounds, interval),
         daemon=True
     )
     t.start()
-    return {"status": "started", "action": "one-click-test", "count": len(ue_indices)}
+    return {"status": "started", "action": "one-click-test", "count": len(ue_indices), "rounds": rounds, "interval": interval}
 
 
 def _execute_batch_deregister(ue_indices: List[int]):
@@ -784,6 +795,13 @@ def _ensure_gnb_alive(gnb):
             gnb.message_thread.start()
         return "alive"
 
+    # getpeername() failed — but if running=True and threads are alive,
+    # the socket may still be usable (SCTP getpeername() can be flaky).
+    # Trust the threads and let the sender fail naturally if truly dead.
+    if running_ok and sender_ok and acceptor_ok:
+        logger.warning("[GNB] getpeername() failed but threads are alive — assuming socket is alive")
+        return "alive"
+
     # Socket is dead — full reconnect
     logger.warning("[GNB] Socket dead or not running — performing full reconnect")
     try:
@@ -794,16 +812,24 @@ def _ensure_gnb_alive(gnb):
         return "dead"
 
 
-def _ensure_ue_registered_and_pdu(ue, gnb, ue_index, ue_id, cancel_event=None):
+def _ensure_ue_registered_and_pdu(ue, gnb, ue_index, ue_id, cancel_event=None, delay_before=0):
     """Ensure UE is registered and has PDU session established.
     If not, trigger re-registration and wait for completion.
-    Returns (success: bool, message: str)
+    Args:
+        delay_before: seconds to wait before sending Initial UE Message (staggered re-registration)
+    Returns (success: bool, reg_latency_ms: float, pdu_latency_ms: float, message: str)
     """
     if cancel_event and cancel_event.is_set():
-        return False, "cancelled"
+        return False, 0, 0, "cancelled"
 
     if ue.registered and ue.dnn_internet_connected:
-        return True, "already registered"
+        # Already registered — try to read existing latencies from Redis
+        try:
+            existing = _ue_store().get_ue(ue_index)
+            lat = existing.get("latency_ms", {}) if existing else {}
+            return True, lat.get("registration", 0), lat.get("pdu_session_1", 0), "already registered"
+        except Exception:
+            return True, 0, 0, "already registered"
 
     # Reset UE state for fresh registration
     ue.registered = False
@@ -820,6 +846,10 @@ def _ensure_ue_registered_and_pdu(ue, gnb, ue_index, ue_id, cancel_event=None):
     ue.t_dnn2_done = None
     ue.pdu_establish_event.clear()
 
+    # Staggered delay before re-registration (helps AMF recover from previous operations)
+    if delay_before > 0:
+        time.sleep(delay_before)
+
     try:
         _ue_store().append_event(ue_index, "oneclick_reregister", f"Re-registering {ue_id}")
     except Exception:
@@ -831,27 +861,44 @@ def _ensure_ue_registered_and_pdu(ue, gnb, ue_index, ue_id, cancel_event=None):
     # Wait for registration + PDU establishment
     ue.pdu_establish_event.wait(timeout=60)
 
+    # Calculate latencies from UE internal timestamps
+    reg_lat = 0.0
+    pdu_lat = 0.0
+    if ue.t_start and ue.t_registered:
+        reg_lat = round((ue.t_registered - ue.t_start) * 1000, 1)
+    if ue.t_start and ue.t_dnn1_done:
+        pdu_lat = round((ue.t_dnn1_done - ue.t_start) * 1000, 1)
+
     if ue.registered and ue.dnn_internet_connected:
-        return True, "re-registered successfully"
+        return True, reg_lat, pdu_lat, "re-registered successfully"
     elif ue.registered:
-        return True, "re-registered (PDU pending)"
+        return True, reg_lat, pdu_lat, "re-registered (PDU pending)"
     else:
-        return False, "re-registration timed out"
+        return False, reg_lat, pdu_lat, "re-registration timed out"
 
 
-def _execute_one_click_test(ue_indices: List[int]):
-    """Background thread to execute one-click test for multiple UEs concurrently.
+def _execute_one_click_test(ue_indices: List[int], rounds: int = 1, interval: float = 0):
+    """Background thread to execute one-click test in phases.
 
-    For each UE, executes in sequence:
-    1. Ensure registered + PDU established
-    2. Deregister
-    3. Re-register + PDU establish
-    4. Release PDU session
-    5. Re-register + PDU establish
-    6. Service Request (user-inactivity)
+    Three test operations (each preceded by re-registration + PDU establishment):
+    1. Deregister
+    2. Release PDU session
+    3. Service Request (user-inactivity)
+
+    Registration and PDU session establishment latencies are collected
+    from all re-registration phases and averaged for display.
+
+    Args:
+        rounds: Number of times to repeat the full 6-phase cycle
+        interval: Seconds to wait between rounds
     """
     global _batch_in_progress
     _batch_in_progress = True
+
+    # Collect latencies from 3 re-registration phases per UE
+    # Structure: {ue_index: {"reg": [t1, t2, t3], "pdu": [t1, t2, t3]}}
+    oneclick_latencies = {}
+
     try:
         with _test_lock:
             runner = _test_state.get("runner")
@@ -863,7 +910,7 @@ def _execute_one_click_test(ue_indices: List[int]):
 
         ws_hub.broadcast_sync("ue_action_progress", {
             "ue_index": -1, "action": "one-click-test", "status": "started",
-            "message": f"One-click test started for {len(ue_indices)} UEs"
+            "message": f"One-click test: {len(ue_indices)} UEs × {rounds} round{'s' if rounds > 1 else ''} (3 ops × re-register)"
         })
 
         gnb_status = _ensure_gnb_alive(gnb)
@@ -882,180 +929,283 @@ def _execute_one_click_test(ue_indices: List[int]):
 
         total = len(ue_indices)
         counter_lock = threading.Lock()
-        completed = [0]
 
-        def _one_click_one(idx):
-            try:
-                ue = runner.gnb.ues[idx]
-                ue_id = getattr(ue, 'supi', f'UE#{idx}')
+        def _run_phase(name, phase_fn, timeout_per_ue=30, inter_ue_delay=0):
+            """Execute a phase for all UEs concurrently, wait for all to finish.
+            phase_fn returns (ok: bool, extra: dict) where extra can contain latency data.
+            Args:
+                inter_ue_delay: seconds between each UE starting (staggered execution)
+            Returns (success_count, fail_count, pending_count).
+            """
+            completed = [0]
+            failed = [0]
+            results = {}
+            last_broadcast = [0, 0]
 
+            def _should_broadcast(c, f):
+                return (c + f - last_broadcast[0] - last_broadcast[1]) >= 3 or c + f >= total
+
+            def _phase_one(idx, my_delay):
+                # Staggered start: each UE waits (idx * inter_ue_delay) before executing
+                if my_delay > 0:
+                    time.sleep(my_delay)
+                try:
+                    ue = runner.gnb.ues[idx]
+                    ue_id = getattr(ue, 'supi', f'UE#{idx}')
+                    if cancel_event and cancel_event.is_set():
+                        return
+                    ok, extra = phase_fn(ue, gnb, idx, ue_id)
+                    results[idx] = (ok, extra)
+                    if ok:
+                        with counter_lock:
+                            completed[0] += 1
+                    else:
+                        with counter_lock:
+                            failed[0] += 1
+                except Exception as e:
+                    logger.error(f"[OneClick][{name}] Error for UE#{idx}: {e}")
+                    results[idx] = (False, {})
+                    with counter_lock:
+                        failed[0] += 1
+                finally:
+                    with counter_lock:
+                        c = completed[0]
+                        f = failed[0]
+                    if _should_broadcast(c, f):
+                        last_broadcast[0] = c
+                        last_broadcast[1] = f
+                        ws_hub.broadcast_sync("ue_action_progress", {
+                            "ue_index": -1, "action": "one-click-test", "status": "progress",
+                            "message": f"[{name}] {c} success, {f} failed, {total - c - f} pending"
+                        })
+
+            threads = []
+            for idx in ue_indices:
                 if cancel_event and cancel_event.is_set():
-                    return
+                    break
+                my_delay = idx * inter_ue_delay
+                t = threading.Thread(target=_phase_one, args=(idx, my_delay), daemon=True)
+                t.start()
+                threads.append(t)
 
-                # Step 1: Ensure registered + PDU established
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "progress",
-                    "message": f"UE {ue_id}: Ensuring registration..."
-                })
-                ok, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
-                if not ok:
-                    ws_hub.broadcast_sync("ue_action_progress", {
-                        "ue_index": idx, "action": "one-click-test", "status": "error",
-                        "message": f"UE {ue_id}: Failed to register ({msg})"
-                    })
-                    return
+            for t in threads:
+                t.join(timeout=timeout_per_ue + 10)
 
-                # Step 2: Deregister
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "progress",
-                    "message": f"UE {ue_id}: Deregistering..."
+            success_count = sum(1 for v in results.values() if v[0])
+            fail_count = len(results) - success_count
+            pending_count = total - len(results)
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"[{name}] DONE — {success_count} success, {fail_count} failed, {pending_count} pending"
+            })
+            logger.info(f"[OneClick] Phase '{name}' done: {success_count} success, {fail_count} failed, {pending_count} pending")
+            return success_count, fail_count, pending_count, results
+
+        # Get configured UE init delay for staggered re-registration
+        ue_init_delay = _test_state.get("parameters", {}).get("ue_init_delay", 0.3)
+
+        for round_num in range(1, rounds + 1):
+            rprefix = f"R{round_num}/{rounds}" if rounds > 1 else ""
+
+            # ── Phase 1: Initial registration + PDU establishment ──
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"{rprefix} Phase 1/6: Registration + PDU...".strip()
+            })
+            def _phase_register(ue, gnb, idx, ue_id):
+                ok, reg_lat, pdu_lat, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
+                if ok and reg_lat > 0:
+                    oneclick_latencies.setdefault(idx, {"reg": [], "pdu": []})
+                    oneclick_latencies[idx]["reg"].append(reg_lat)
+                    oneclick_latencies[idx]["pdu"].append(pdu_lat)
+                return ok, {"reg_lat": reg_lat, "pdu_lat": pdu_lat}
+            s, f, p, reg_results = _run_phase(f"{rprefix}-register" if rprefix else "register", _phase_register, timeout_per_ue=60)
+            if s == 0:
+                ws_hub.broadcast_sync("ue_action_complete", {
+                    "ue_index": -1, "action": "one-click-test", "status": "error",
+                    "message": f"{rprefix} Phase 1 failed: no UEs could register ({f} failed, {p} pending)".strip()
                 })
-                t_start = time.time()
+                return
+            _refresh_ue_list(runner, skip_history=True)
+
+            # ── Phase 2: Deregister ──
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"{rprefix} Phase 2/6: Deregistering...".strip()
+            })
+            def _phase_deregister(ue, gnb, idx, ue_id):
+                if not ue.registered:
+                    return True, {}
                 ue.deregister_event.clear()
+                t_start = time.time()
                 msg = ue.send_deregistration_request()
                 gnb.message_queue.put(msg)
-                ue.deregister_event.wait(timeout=30)
+                ok = ue.deregister_event.wait(timeout=30)
                 dereg_lat = round((time.time() - t_start) * 1000, 1)
+                if ok and not ue.registered:
+                    try:
+                        existing = _ue_store().get_ue(idx)
+                        lat = existing.get("latency_ms", {}) if existing else {}
+                        lat["deregister"] = dereg_lat
+                        _ue_store().update_ue(idx, {"latency_ms": lat, "state": "deregistered"})
+                        _ue_store().append_event(idx, "oneclick_deregister", f"Deregistered {ue_id} in {dereg_lat}ms")
+                    except Exception:
+                        pass
+                    return True, {}
+                return False, {}
+            _run_phase(f"{rprefix}-deregister" if rprefix else "deregister", _phase_deregister, timeout_per_ue=30)
+            _refresh_ue_list(runner, skip_history=True)
 
-                try:
-                    existing = _ue_store().get_ue(idx)
-                    lat = existing.get("latency_ms", {}) if existing else {}
-                    lat["deregister"] = dereg_lat
-                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": "deregistered"})
-                    _ue_store().append_event(idx, "oneclick_deregister", f"Deregistered in {dereg_lat}ms")
-                except Exception:
-                    pass
-
-                # Step 3: Re-register after deregister
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "progress",
-                    "message": f"UE {ue_id}: Re-registering after deregister..."
+            # ── Phase 3: Re-register after deregister ──
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"{rprefix} Phase 3/6: Re-registering after deregister...".strip()
+            })
+            def _phase_rereg_after_dereg(ue, gnb, idx, ue_id):
+                ok, reg_lat, pdu_lat, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event, delay_before=3)
+                if ok and reg_lat > 0:
+                    oneclick_latencies.setdefault(idx, {"reg": [], "pdu": []})
+                    oneclick_latencies[idx]["reg"].append(reg_lat)
+                    oneclick_latencies[idx]["pdu"].append(pdu_lat)
+                return ok, {"reg_lat": reg_lat, "pdu_lat": pdu_lat}
+            s, f, p, _ = _run_phase(f"{rprefix}-re-reg-dereg" if rprefix else "re-reg-dereg", _phase_rereg_after_dereg, timeout_per_ue=60, inter_ue_delay=ue_init_delay)
+            if s == 0:
+                ws_hub.broadcast_sync("ue_action_complete", {
+                    "ue_index": -1, "action": "one-click-test", "status": "error",
+                    "message": f"{rprefix} Phase 3 failed: no UEs could re-register".strip()
                 })
-                ok, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
-                if not ok:
-                    ws_hub.broadcast_sync("ue_action_progress", {
-                        "ue_index": idx, "action": "one-click-test", "status": "error",
-                        "message": f"UE {ue_id}: Failed to re-register after deregister ({msg})"
-                    })
-                    return
+                return
+            _refresh_ue_list(runner, skip_history=True)
 
-                # Step 4: Release PDU session
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "progress",
-                    "message": f"UE {ue_id}: Releasing PDU session..."
-                })
-                t_start = time.time()
+            # ── Phase 4: Release PDU session ──
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"{rprefix} Phase 4/6: Releasing PDU sessions...".strip()
+            })
+            def _phase_release(ue, gnb, idx, ue_id):
+                if not ue.dnn_internet_connected:
+                    return True, {}
                 ue.pdu_release_event.clear()
+                t_start = time.time()
                 pdu_sess_id = ue.dnn_internet_pdu_sess_id or 1
                 msg = ue.send_pdu_session_release_request(pdu_sess_id)
                 gnb.message_queue.put(msg)
-                ue.pdu_release_event.wait(timeout=30)
+                ok = ue.pdu_release_event.wait(timeout=30)
                 release_lat = round((time.time() - t_start) * 1000, 1)
+                if ok and not ue.dnn_internet_connected:
+                    try:
+                        existing = _ue_store().get_ue(idx)
+                        lat = existing.get("latency_ms", {}) if existing else {}
+                        lat["release"] = release_lat
+                        _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
+                        _ue_store().append_event(idx, "oneclick_release", f"Released {ue_id} in {release_lat}ms")
+                    except Exception:
+                        pass
+                    return True, {}
+                return False, {}
+            _run_phase(f"{rprefix}-release" if rprefix else "release", _phase_release, timeout_per_ue=30)
+            _refresh_ue_list(runner, skip_history=True)
 
-                try:
-                    existing = _ue_store().get_ue(idx)
-                    lat = existing.get("latency_ms", {}) if existing else {}
-                    lat["release"] = release_lat
-                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
-                    _ue_store().append_event(idx, "oneclick_release", f"Released in {release_lat}ms")
-                except Exception:
-                    pass
-
-                # Step 5: Re-register after release
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "progress",
-                    "message": f"UE {ue_id}: Re-registering after release..."
+            # ── Phase 5: Re-register after release ──
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"{rprefix} Phase 5/6: Re-registering after release...".strip()
+            })
+            def _phase_rereg_after_release(ue, gnb, idx, ue_id):
+                ok, reg_lat, pdu_lat, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event, delay_before=3)
+                if ok and reg_lat > 0:
+                    oneclick_latencies.setdefault(idx, {"reg": [], "pdu": []})
+                    oneclick_latencies[idx]["reg"].append(reg_lat)
+                    oneclick_latencies[idx]["pdu"].append(pdu_lat)
+                return ok, {"reg_lat": reg_lat, "pdu_lat": pdu_lat}
+            s, f, p, _ = _run_phase(f"{rprefix}-re-reg-release" if rprefix else "re-reg-release", _phase_rereg_after_release, timeout_per_ue=60, inter_ue_delay=ue_init_delay)
+            if s == 0:
+                ws_hub.broadcast_sync("ue_action_complete", {
+                    "ue_index": -1, "action": "one-click-test", "status": "error",
+                    "message": f"{rprefix} Phase 5 failed: no UEs could re-register".strip()
                 })
-                ok, msg = _ensure_ue_registered_and_pdu(ue, gnb, idx, ue_id, cancel_event)
-                if not ok:
-                    ws_hub.broadcast_sync("ue_action_progress", {
-                        "ue_index": idx, "action": "one-click-test", "status": "error",
-                        "message": f"UE {ue_id}: Failed to re-register after release ({msg})"
-                    })
-                    return
+                return
+            _refresh_ue_list(runner, skip_history=True)
 
-                # Step 6: Service Request (user-inactivity)
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "progress",
-                    "message": f"UE {ue_id}: Executing service request..."
-                })
-                t_sr_start = time.time()
+            # ── Phase 6: Service Request ──
+            ws_hub.broadcast_sync("ue_action_progress", {
+                "ue_index": -1, "action": "one-click-test", "status": "progress",
+                "message": f"{rprefix} Phase 6/6: Service request...".strip()
+            })
+            def _phase_service_request(ue, gnb, idx, ue_id):
+                if not ue.registered:
+                    return False, {}
+                time.sleep(3)
                 ue.context_release_event.clear()
                 ue.paging_event.clear()
                 ue.service_accept_event.clear()
+                t_start = time.time()
                 msg = ue.release_ue_context()
                 gnb.message_queue.put(msg)
-                ue.context_release_event.wait(timeout=10)
-
-                if not ue.context_released:
-                    ws_hub.broadcast_sync("ue_action_progress", {
-                        "ue_index": idx, "action": "one-click-test", "status": "error",
-                        "message": f"UE {ue_id}: Context release timed out"
-                    })
-                    return
-
-                # Wait for Paging (Open5GS)
+                ok = ue.context_release_event.wait(timeout=10)
+                if not ok or not ue.context_released:
+                    return False, {}
                 if core_network == "open5gs":
                     ue.paging_event.wait(timeout=15)
-
-                # Send Service Request
                 ue.paging_received = False
                 msg = ue.send_service_request()
                 gnb.message_queue.put(msg)
-                ue.service_accept_event.wait(timeout=30)
+                ok = ue.service_accept_event.wait(timeout=30)
+                sr_lat = round((time.time() - t_start) * 1000, 1)
+                if ok and ue.service_accepted:
+                    try:
+                        existing = _ue_store().get_ue(idx)
+                        lat = existing.get("latency_ms", {}) if existing else {}
+                        lat["service_request"] = sr_lat
+                        _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
+                        _ue_store().append_event(idx, "oneclick_service_request", f"Service Request accepted {ue_id} in {sr_lat}ms")
+                    except Exception:
+                        pass
+                    return True, {}
+                return False, {}
+            _run_phase(f"{rprefix}-service-req" if rprefix else "service-req", _phase_service_request, timeout_per_ue=45)
+            _refresh_ue_list(runner, skip_history=True)
 
-                t_sr_done = time.time()
-                sr_lat = round((t_sr_done - t_sr_start) * 1000, 1)
+            # Interval between rounds (not after the last round)
+            if round_num < rounds and interval > 0:
+                ws_hub.broadcast_sync("ue_action_progress", {
+                    "ue_index": -1, "action": "one-click-test", "status": "progress",
+                    "message": f"Round {round_num} done. Waiting {interval}s before next round..."
+                })
+                # Sleep in small increments to respect cancel_event
+                waited = 0.0
+                while waited < interval:
+                    if cancel_event and cancel_event.is_set():
+                        break
+                    time.sleep(min(0.5, interval - waited))
+                    waited += 0.5
 
-                # Update Redis
+        # ── Compute average latencies and store to Redis ──
+        for idx, lats in oneclick_latencies.items():
+            reg_vals = [v for v in lats.get("reg", []) if v > 0]
+            pdu_vals = [v for v in lats.get("pdu", []) if v > 0]
+            if reg_vals or pdu_vals:
                 try:
                     existing = _ue_store().get_ue(idx)
                     lat = existing.get("latency_ms", {}) if existing else {}
-                    lat["service_request"] = sr_lat
-                    _ue_store().update_ue(idx, {"latency_ms": lat, "state": _determine_ue_state(ue)})
-                    _ue_store().append_event(idx, "oneclick_service_request",
-                        f"Service Request {'accepted' if ue.service_accepted else 'timed out'} in {sr_lat}ms")
+                    if reg_vals:
+                        avg_reg = round(sum(reg_vals) / len(reg_vals), 1)
+                        lat["registration"] = avg_reg
+                    if pdu_vals:
+                        avg_pdu = round(sum(pdu_vals) / len(pdu_vals), 1)
+                        lat["pdu_session_1"] = avg_pdu
+                    if reg_vals and pdu_vals:
+                        lat["total"] = round(sum(reg_vals) / len(reg_vals) + sum(pdu_vals) / len(pdu_vals), 1)
+                    _ue_store().update_ue(idx, {"latency_ms": lat})
+                    _ue_store().append_event(idx, "oneclick_avg_latencies",
+                        f"Avg registration={lat.get('registration')}ms, avg PDU={lat.get('pdu_session_1')}ms (from {len(reg_vals)} samples)")
                 except Exception:
                     pass
-
-                # Final status
-                msg_text = f"One-click test completed for {ue_id}"
-                _refresh_ue_list(runner)
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "completed",
-                    "message": msg_text
-                })
-
-            except Exception as e:
-                logger.error(f"[OneClick] Error for UE#{idx}: {e}")
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": idx, "action": "one-click-test", "status": "error",
-                    "message": f"UE#{idx}: {str(e)}"
-                })
-            finally:
-                with counter_lock:
-                    completed[0] += 1
-                    c = completed[0]
-                ws_hub.broadcast_sync("ue_action_progress", {
-                    "ue_index": -1, "action": "one-click-test", "status": "progress",
-                    "message": f"One-click test {c}/{total} UEs completed"
-                })
-
-        threads = []
-        for idx in ue_indices:
-            if cancel_event and _test_state.get("running") and cancel_event.is_set():
-                break
-            t = threading.Thread(target=_one_click_one, args=(idx,), daemon=True)
-            t.start()
-            threads.append(t)
-
-        for t in threads:
-            t.join()
 
         _refresh_ue_list(runner)
         ws_hub.broadcast_sync("ue_action_complete", {
             "ue_index": -1, "action": "one-click-test", "status": "completed",
-            "message": f"One-click test completed for {total} UEs"
+            "message": f"One-click test completed: {total} UEs × {rounds} round{'s' if rounds > 1 else ''} (deregister → release → service-request)"
         })
 
     except Exception as e:
@@ -1066,7 +1216,6 @@ def _execute_one_click_test(ue_indices: List[int]):
         })
     finally:
         _batch_in_progress = False
-
 
 def _execute_batch_release_pdu(ue_indices: List[int]):
     """Background thread to release PDU sessions for multiple UEs concurrently."""
@@ -1572,13 +1721,18 @@ def _execute_ue_action(ue_index: int, action: str, params: dict):
         })
 
 
-def _refresh_ue_list(runner):
-    """Refresh the UE list in _test_state and Redis, then recompute latency stats."""
+def _refresh_ue_list(runner, skip_history=False):
+    """Refresh the UE list in _test_state and Redis, then recompute latency stats.
+    
+    Args:
+        skip_history: If True, skip saving to history (used during one-click test
+                      intermediate phases to avoid duplicate history records).
+    """
     with _batch_lock:
         try:
             _collect_5g_results(runner)
             # Re-compute box plot stats to include any new action latencies
-            _finalize_test()
+            _finalize_test(skip_history=skip_history)
         except Exception as e:
             logger.error(f"Error refreshing UE list: {e}")
 
@@ -1817,7 +1971,7 @@ def _run_5g_test(req: TestStartRequest, cancel_event: threading.Event):
         start_imsi = req.start_imsi or f"{network_config.get('initial_imsi_index', 1):010d}"
         gnb_address = req.gnb_address or config_loader.get("GNB_ADDRESS", "192.168.55.9")
         amf_address = req.core_address or config_loader.get_core_address()
-        dnn = req.dnn or config_loader.get("DNN", "internet")
+        dnn = req.dnn or config_loader.get("DNN") or config_loader.get("DATA_NETWORK_NAME", "internet")
         tac = req.tac or config_loader.get("TAC", "000001")
         gnb_nr_cell_id = config_loader.get_int("GNB_NR_CELL_ID", 1)
         log_level = req.log_level or config_loader.get("LOG_LEVEL", "INFO")
@@ -1887,7 +2041,7 @@ def _run_4g_test(req: TestStartRequest, cancel_event: threading.Event):
         enb_id = req.enb_id if req.enb_id is not None else config_loader.get_int("ENB_ID", 1)
         enb_cell_id = req.enb_cell_id if req.enb_cell_id is not None else config_loader.get_int("ENB_CELL_ID", 1000000)
         tac = req.tac or config_loader.get("TAC", "000001")
-        apn = req.apn or config_loader.get("APN", "internet")
+        apn = req.apn or config_loader.get("APN") or config_loader.get("DATA_NETWORK_NAME", "internet")
         imeisv = config_loader.get("IMEISV", "4370816125816151")
         log_level = req.log_level or config_loader.get("LOG_LEVEL", "INFO")
 
@@ -1998,12 +2152,15 @@ def _collect_5g_results(runner):
             pres_lat = preserved.get(i, {})
 
             latency_ms = {
-                "registration": reg_lat,
-                "pdu_session_1": sess_lat,
-                "total": total_lat,
-                "release": existing_lat.get("release") or pres_lat.get("release"),
-                "deregister": existing_lat.get("deregister") or pres_lat.get("deregister"),
-                "service_request": existing_lat.get("service_request") or pres_lat.get("service_request"),
+                # Prefer existing Redis values (e.g. one-click-test averaged latencies)
+                # over freshly-computed ones from UE timestamps, so that action-based
+                # averages survive the _refresh_ue_list → _collect_5g_results cycle.
+                "registration": existing_lat.get("registration") if existing_lat.get("registration") is not None else reg_lat,
+                "pdu_session_1": existing_lat.get("pdu_session_1") if existing_lat.get("pdu_session_1") is not None else sess_lat,
+                "total": existing_lat.get("total") if existing_lat.get("total") is not None else total_lat,
+                "release": existing_lat.get("release") if existing_lat.get("release") is not None else pres_lat.get("release"),
+                "deregister": existing_lat.get("deregister") if existing_lat.get("deregister") is not None else pres_lat.get("deregister"),
+                "service_request": existing_lat.get("service_request") if existing_lat.get("service_request") is not None else pres_lat.get("service_request"),
             }
 
             ue_data = {
@@ -2140,8 +2297,13 @@ def _compute_box_plot_stats(values: List[float]) -> Optional[Dict]:
     }
 
 
-def _finalize_test():
-    """Compute box plot stats and persist test history."""
+def _finalize_test(skip_history=False):
+    """Compute box plot stats and persist test history.
+    
+    Args:
+        skip_history: If True, skip saving to history (used during one-click test
+                      intermediate phases to avoid duplicate history records).
+    """
     with _test_lock:
         ues = _test_state["ues"]
 
@@ -2168,8 +2330,9 @@ def _finalize_test():
     # Broadcast updated latency stats so frontend box plot updates in real-time
     ws_hub.broadcast_sync("latency_stats_update", latency_stats)
 
-    # Persist to history
-    _save_history()
+    # Persist to history (skip during one-click test intermediate phases)
+    if not skip_history:
+        _save_history()
 
 
 def _build_history_record() -> Dict[str, Any]:

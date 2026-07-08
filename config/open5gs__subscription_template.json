@@ -18,6 +18,9 @@
             "unit": 3
         }
     },
+    "msisdn": [
+        "13300000001"
+    ],
     "subscriber_status": 0,
     "operator_determined_barring": 0,
     "slice": [

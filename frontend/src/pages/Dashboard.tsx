@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Select, InputNumber, Button, Table, Card, Tag, Progress, Space, Row, Col, Typography, Divider, Alert,
+  Select, InputNumber, Button, Table, Card, Tag, Progress, Space, Row, Col, Typography, Divider, Alert, Statistic, Steps, Badge, Modal, Input,
 } from 'antd';
 import {
   PlayCircleOutlined, StopOutlined, ThunderboltOutlined,
   DownloadOutlined, CloudServerOutlined, TableOutlined, BarChartOutlined,
-  WarningOutlined, ReloadOutlined,
+  WarningOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  ClockCircleOutlined, ApiOutlined, RiseOutlined, FallOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import {
@@ -17,6 +19,8 @@ import {
   releaseAllPduSessions, deregisterAllUEs, serviceRequestAllUEs, oneClickTest, restartService, clearRedis, getUEEvents,
 } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import Profile from './Profile';
+
 import Plot from '../components/Plot';
 
 const { Text } = Typography;
@@ -24,9 +28,11 @@ const { Text } = Typography;
 type TaskMode = 'provision' | 'ue-test';
 
 export default function Dashboard() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode, setMode] = useState<'5g' | '4g'>('5g');
   const [count, setCount] = useState(10);
   const [ueInitDelay, setUeInitDelay] = useState(0.3);
+  const [oneClickRounds, setOneClickRounds] = useState(1);
   const [coreNetwork, setCoreNetwork] = useState('free5gc');
   const [action, setAction] = useState('provision');
   const [profile, setProfile] = useState('');
@@ -56,6 +62,10 @@ export default function Dashboard() {
   const [provLog, setProvLog] = useState<string[]>([]);
   const [provRunning, setProvRunning] = useState(false);
 
+  // Global real-time log stream — reference: Cymas terminal-style logs
+  const [globalLogs, setGlobalLogs] = useState<string[]>([]);
+  const [showGlobalLogs, setShowGlobalLogs] = useState(false);
+
   useEffect(() => {
     listProfiles().then(r => {
       setProfiles(r.data.profiles || []);
@@ -78,11 +88,17 @@ export default function Dashboard() {
   const isRunning = taskMode === 'ue-test' ? testRunning : provRunning;
 
   const onWS = useCallback((type: string, data: any) => {
+    const fmtTime = (ts?: string) => {
+      if (!ts) return new Date().toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(new Date().getMilliseconds()).padStart(3, '0');
+      const d = new Date(ts);
+      return d.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    };
     if (type === 'test_ues_update' && data.ues) setUes(data.ues);
     if (type === 'test_complete') {
       setTestRunning(false);
       getTestUEs().then(r => setUes(r.data)).catch(() => {});
       getLatencyStats().then(r => { setLatencyStats(r.data); setShowBoxPlot(true); }).catch(() => {});
+      setGlobalLogs(prev => [...prev.slice(-200), `[${fmtTime(data.ts)}] [TEST] Test completed`]);
     }
     if (type === 'latency_stats_update') {
       setLatencyStats(data);
@@ -90,11 +106,18 @@ export default function Dashboard() {
     }
     if (type === 'ue_action_progress') {
       setActionMsg(data.message || '');
+      if (data.message) {
+        setGlobalLogs(prev => [...prev.slice(-200), `[${fmtTime(data.ts)}] [${data.action?.toUpperCase() || 'ACTION'}] ${data.message}`]);
+        setShowGlobalLogs(true);
+      }
     }
     if (type === 'ue_action_complete') {
       setActionLoading(false);
       setActionMsg(data.message || '');
       getTestUEs().then(r => setUes(r.data)).catch(() => {});
+      if (data.message) {
+        setGlobalLogs(prev => [...prev.slice(-200), `[${fmtTime(data.ts)}] [${data.action?.toUpperCase() || 'ACTION'}] ${data.status?.toUpperCase()}: ${data.message}`]);
+      }
     }
     if (type === 'ue_removed') {
       setSelectedIdx(null);
@@ -107,6 +130,10 @@ export default function Dashboard() {
       setUes([]); setLatencyStats({}); setShowBoxPlot(false);
       setSelectedIdx(null); setSelectedAction(null);
       setEventLog([]); setShowEvents(false);
+      setGlobalLogs([]);
+    }
+    if (type === 'service_restarted') {
+      setGlobalLogs(prev => [...prev.slice(-200), `[${fmtTime(data.ts)}] [SYSTEM] Service restarted`]);
     }
     if (type.startsWith('provision_')) {
       setProvLog(prev => [...prev, `[${type}] ${JSON.stringify(data)}`]);
@@ -204,9 +231,9 @@ export default function Dashboard() {
 
   const handleOneClickTest = async () => {
     setActionLoading(true);
-    setActionMsg('One-click test started: deregister → release → service request...');
+    setActionMsg(`One-click test: ${oneClickRounds} round${oneClickRounds > 1 ? 's' : ''}, interval ${ueInitDelay}s...`);
     try {
-      await oneClickTest();
+      await oneClickTest(oneClickRounds, ueInitDelay);
     } catch (e: any) {
       setActionMsg(e.response?.data?.error || e.message);
       setActionLoading(false);
@@ -231,8 +258,20 @@ export default function Dashboard() {
   const handleViewEvents = async (idx: number) => {
     try {
       const r = await getUEEvents(idx);
-      setEventLog(r.data.events || []);
+      const events = r.data.events || [];
+      setEventLog(events);
       setShowEvents(true);
+      // Append UE events to global log stream
+      if (events.length > 0) {
+        const ue = ues[idx];
+        const ueId = ue?.imsi || `UE#${idx}`;
+        const newLogs = events.map((evt: any) => {
+          const ts = evt.ts ? new Date(evt.ts).toLocaleTimeString('en-GB', { hour12: false }) : new Date().toLocaleTimeString('en-GB', { hour12: false });
+          return `[${ts}] [UE-${ueId}] [${evt.type?.toUpperCase()}] ${evt.detail}`;
+        });
+        setGlobalLogs(prev => [...prev.slice(-200), ...newLogs]);
+        setShowGlobalLogs(true);
+      }
     } catch {
       setEventLog([]);
     }
@@ -245,18 +284,32 @@ export default function Dashboard() {
     { title: 'IMSI', dataIndex: 'imsi', key: 'imsi', width: 130 },
     { title: 'DNN', dataIndex: 'dnn', key: 'dnn', width: 80 },
     { title: 'IPv4', dataIndex: 'ipv4', key: 'ipv4', width: 130 },
-    { title: 'TEID', dataIndex: 'gtp_teid', key: 'teid', width: 90 },
+    { title: 'TEID', dataIndex: 'gtp_teid', key: 'teid', width: 90,
+      render: (_: any, r: any) => {
+        const v = r.gtp_teid;
+        if (v === 'N/A' || v === undefined || v === null || v === '') return '-';
+        const n = parseInt(v, 10);
+        if (isNaN(n)) return v;
+        return n.toString(16).padStart(8, '0').toUpperCase();
+      },
+    },
     { title: 'RANUENGAPID', dataIndex: 'ran_ue_ngap_id', key: 'ran', width: 100 },
     { title: 'AMFUENGAPID', dataIndex: 'amf_ue_ngap_id', key: 'amf', width: 100 },
     {
-      title: 'State', key: 'state', width: 110,
+      title: 'State', key: 'state', width: 130,
       render: (_: any, r: any) => {
         const s = r.state;
-        const color = s === 'pdu_established' || s === 'service_accepted' ? 'success'
-          : s === 'registered' ? 'processing'
-          : s === 'pdu_released' || s === 'context_released' ? 'warning'
-          : 'error';
-        return <Tag color={color}>{s}</Tag>;
+        const config: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+          pdu_established: { color: 'success', icon: <CheckCircleOutlined />, label: 'PDU Established' },
+          service_accepted: { color: 'success', icon: <CheckCircleOutlined />, label: 'Service Accepted' },
+          registered: { color: 'processing', icon: <ApiOutlined />, label: 'Registered' },
+          pdu_released: { color: 'warning', icon: <FallOutlined />, label: 'PDU Released' },
+          context_released: { color: 'warning', icon: <FallOutlined />, label: 'Context Released' },
+          deregistered: { color: 'error', icon: <CloseCircleOutlined />, label: 'Deregistered' },
+          idle: { color: 'default', icon: <ClockCircleOutlined />, label: 'Idle' },
+        };
+        const cfg = config[s] || { color: 'default', icon: <ClockCircleOutlined />, label: s };
+        return <Tag color={cfg.color} icon={cfg.icon} style={{ fontSize: 11 }}>{cfg.label}</Tag>;
       },
     },
     { title: 'Reg (ms)', key: 'reg', width: 80, render: (_: any, r: any) => r.latency_ms?.registration ?? '-' },
@@ -274,7 +327,7 @@ export default function Dashboard() {
   const plotData: any[] = [];
   const plotlyLayout: any = {
     paper_bgcolor: '#111827', plot_bgcolor: '#0a0e17',
-    font: { color: '#e0e7ff', family: 'JetBrains Mono, monospace', size: 11 },
+    font: { color: '#e0e7ff', family: 'Consolas, Liberation Mono, Menlo, monospace', size: 11 },
     margin: { t: 30, r: 20, b: 40, l: 60 },
     xaxis: { gridcolor: '#1e3a5f', zerolinecolor: '#1e3a5f' },
     yaxis: { title: 'Latency (ms)', gridcolor: '#1e3a5f', zerolinecolor: '#1e3a5f' },
@@ -292,7 +345,7 @@ export default function Dashboard() {
       {/* Header row with status */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
-          <Typography.Title level={4} style={{ margin: 0, color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace' }}>
+          <Typography.Title level={4} style={{ margin: 0, color: '#00d4ff', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' }}>
             ◈ Dashboard
           </Typography.Title>
         </Col>
@@ -310,6 +363,12 @@ export default function Dashboard() {
               Reboot
             </Button>
           )}
+          <Button
+            size="small"
+            icon={<SettingOutlined />}
+            onClick={() => setSettingsOpen(true)}
+            style={{ marginLeft: 8, fontSize: 12, color: '#8a9bb8', borderColor: '#8a9bb8' }}
+          />
         </Col>
       </Row>
 
@@ -359,6 +418,10 @@ export default function Dashboard() {
               />
             </div>
           )}
+          <div>
+            <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>ROUNDS:</Text>
+            <InputNumber value={oneClickRounds} onChange={v => setOneClickRounds(v ?? 1)} size="small" min={1} max={100} style={{ width: 60 }} />
+          </div>
           {!isRunning ? (
             <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleRun}>Run</Button>
           ) : (
@@ -383,18 +446,122 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Batch action toolbar — always visible regardless of view tab */}
-      {ues.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <Button size="small" danger icon={<WarningOutlined />} onClick={handleReleaseAll}>Release All PDU</Button>
-          <Button size="small" danger icon={<WarningOutlined />} onClick={handleDeregisterAll}>Deregister All</Button>
-          <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={handleServiceRequestAll}>Service Request All</Button>
-          <Button size="small" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', border: 'none' }} icon={<ThunderboltOutlined />} onClick={handleOneClickTest}>One-Click Test</Button>
-          <Button size="small" icon={<DownloadOutlined />} onClick={exportUEsCSV}>CSV</Button>
-          <Button size="small" icon={<DownloadOutlined />} onClick={exportLatencyJSON}>Stats</Button>
-          <Button size="small" icon={<DownloadOutlined />} onClick={exportFullJSON}>Full</Button>
-        </div>
+      {/* Summary Statistics Cards — always visible */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+          <Col xs={12} sm={8} md={4}>
+            <Card size="small" style={{ background: '#141b2d', borderColor: '#1e3a5f' }}>
+              <Statistic
+                title={<Text type="secondary" style={{ fontSize: 11 }}>Total UEs</Text>}
+                value={ues.length}
+                styles={{ content: { color: '#00d4ff', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
+                prefix={<ApiOutlined style={{ fontSize: 14, color: '#00d4ff' }} />}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={8} md={4}>
+            <Card size="small" style={{ background: '#141b2d', borderColor: '#1e3a5f' }}>
+              <Statistic
+                title={<Text type="secondary" style={{ fontSize: 11 }}>Registered</Text>}
+                value={ues.filter((u: any) => u.state === 'registered' || u.state === 'pdu_established' || u.state === 'service_accepted').length}
+                styles={{ content: { color: '#52c41a', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
+                prefix={<CheckCircleOutlined style={{ fontSize: 14, color: '#52c41a' }} />}
+                suffix={<span style={{ fontSize: 11, color: '#8a9bb8' }}>/{ues.length}</span>}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={8} md={4}>
+            <Card size="small" style={{ background: '#141b2d', borderColor: '#1e3a5f' }}>
+              <Statistic
+                title={<Text type="secondary" style={{ fontSize: 11 }}>Avg Reg Latency</Text>}
+                value={(() => {
+                  const vals = ues.map((u: any) => u.latency_ms?.registration).filter((v: any) => typeof v === 'number');
+                  return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
+                })()}
+                styles={{ content: { color: '#faad14', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
+                prefix={<ClockCircleOutlined style={{ fontSize: 14, color: '#faad14' }} />}
+                suffix="ms"
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={8} md={4}>
+            <Card size="small" style={{ background: '#141b2d', borderColor: '#1e3a5f' }}>
+              <Statistic
+                title={<Text type="secondary" style={{ fontSize: 11 }}>Avg Session Latency</Text>}
+                value={(() => {
+                  const vals = ues.map((u: any) => u.latency_ms?.pdu_session_1).filter((v: any) => typeof v === 'number');
+                  return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
+                })()}
+                styles={{ content: { color: '#eb2f96', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
+                prefix={<RiseOutlined style={{ fontSize: 14, color: '#eb2f96' }} />}
+                suffix="ms"
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={8} md={4}>
+            <Card size="small" style={{ background: '#141b2d', borderColor: '#1e3a5f' }}>
+              <Statistic
+                title={<Text type="secondary" style={{ fontSize: 11 }}>Active PDU Sessions</Text>}
+                value={ues.filter((u: any) => u.state === 'pdu_established' || u.state === 'service_accepted').length}
+                styles={{ content: { color: '#13c2c2', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
+                prefix={<ThunderboltOutlined style={{ fontSize: 14, color: '#13c2c2' }} />}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={8} md={4}>
+            <Card size="small" style={{ background: '#141b2d', borderColor: '#1e3a5f' }}>
+              <Statistic
+                title={<Text type="secondary" style={{ fontSize: 11 }}>Success Rate</Text>}
+                value={(() => {
+                  const established = ues.filter((u: any) => u.state === 'pdu_established' || u.state === 'service_accepted').length;
+                  return ues.length > 0 ? Math.round((established / ues.length) * 100) : 0;
+                })()}
+                styles={{ content: { color: '#52c41a', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
+                prefix={<CheckCircleOutlined style={{ fontSize: 14, color: '#52c41a' }} />}
+                suffix="%"
+              />
+            </Card>
+          </Col>
+        </Row>
+
+      {/* One-click test phase progress */}
+      {actionLoading && actionMsg && actionMsg.includes('Phase') && (
+        <Card size="small" style={{ marginBottom: 12, background: '#141b2d', borderColor: '#1e3a5f' }}>
+          <Steps
+            size="small"
+            current={(() => {
+              if (actionMsg.includes('Phase 1')) return 0;
+              if (actionMsg.includes('Phase 2')) return 1;
+              if (actionMsg.includes('Phase 3')) return 2;
+              if (actionMsg.includes('Phase 4')) return 3;
+              if (actionMsg.includes('Phase 5')) return 4;
+              if (actionMsg.includes('Phase 6')) return 5;
+              return 0;
+            })()}
+            items={[
+              { title: 'Register', icon: <CheckCircleOutlined /> },
+              { title: 'Deregister', icon: <CloseCircleOutlined /> },
+              { title: 'Re-register', icon: <ReloadOutlined /> },
+              { title: 'Release PDU', icon: <FallOutlined /> },
+              { title: 'Re-register', icon: <ReloadOutlined /> },
+              { title: 'Service Req', icon: <ThunderboltOutlined /> },
+            ]}
+          />
+          <div style={{ marginTop: 8, fontSize: 12, color: '#b8c4e0', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' }}>
+            {actionMsg}
+          </div>
+        </Card>
       )}
+
+      {/* Batch action toolbar — always visible regardless of view tab */}
+      <div style={{ display: 'flex', justifyContent: 'flex-start', gap: 8, marginBottom: 12, flexWrap: 'wrap', minHeight: 32 }}>
+        <Button size="small" danger onClick={handleReleaseAll} disabled={ues.length === 0} style={{ minWidth: 120 }}>Release All PDU</Button>
+        <Button size="small" danger onClick={handleDeregisterAll} disabled={ues.length === 0} style={{ minWidth: 120 }}>Deregister All</Button>
+        <Button size="small" type="primary" onClick={handleServiceRequestAll} disabled={ues.length === 0} style={{ minWidth: 120 }}>Service Request All</Button>
+        <Button size="small" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', border: 'none', minWidth: 120 }} onClick={handleOneClickTest} disabled={ues.length === 0}>One-Click Test</Button>
+        <Button size="small" icon={<DownloadOutlined />} onClick={exportUEsCSV} disabled={ues.length === 0} style={{ minWidth: 80 }}>CSV</Button>
+        <Button size="small" icon={<DownloadOutlined />} onClick={exportLatencyJSON} disabled={ues.length === 0} style={{ minWidth: 80 }}>Stats</Button>
+        <Button size="small" icon={<DownloadOutlined />} onClick={exportFullJSON} disabled={ues.length === 0} style={{ minWidth: 80 }}>Full</Button>
+      </div>
 
       {/* UE Results / Box Plot view toggle + card */}
       {(ues.length > 0 || (showBoxPlot && plotData.length > 0)) && (
@@ -482,7 +649,7 @@ export default function Dashboard() {
           style={{ marginBottom: 16, flexShrink: 0, borderColor: '#1e3a5f', background: '#0d1117' }}
           styles={{ body: { padding: '12px 16px' } }}
           extra={
-            <Button size="small" type="text" style={{ color: '#64748b' }} onClick={() => { setSelectedIdx(null); setSelectedAction(null); setActionMsg(''); setEventLog([]); setShowEvents(false); }}>
+            <Button size="small" type="text" style={{ color: '#8a9bb8' }} onClick={() => { setSelectedIdx(null); setSelectedAction(null); setActionMsg(''); setEventLog([]); setShowEvents(false); }}>
               ✕
             </Button>
           }
@@ -493,7 +660,7 @@ export default function Dashboard() {
             <div style={{ flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <ThunderboltOutlined style={{ color: '#00d4ff', fontSize: 14 }} />
-                <Text style={{ color: '#e0e7ff', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600 }}>
+                <Text style={{ color: '#e0e7ff', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', fontSize: 13, fontWeight: 600 }}>
                   {ues[selectedIdx]?.imsi}
                 </Text>
                 <Tag color={
@@ -503,10 +670,10 @@ export default function Dashboard() {
                     : 'default'
                 } style={{ fontSize: 11 }}>{ues[selectedIdx]?.state}</Tag>
               </div>
-              <div style={{ display: 'flex', gap: 16, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#64748b' }}>
-                <span>IPv4 <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.ipv4}</span></span>
-                <span>RANUENGAPID <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.ran_ue_ngap_id}</span></span>
-                <span>AMFUENGAPID <span style={{ color: '#94a3b8' }}>{ues[selectedIdx]?.amf_ue_ngap_id}</span></span>
+              <div style={{ display: 'flex', gap: 16, fontSize: 11, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', color: '#8a9bb8' }}>
+                <span>IPv4 <span style={{ color: '#b8c4e0' }}>{ues[selectedIdx]?.ipv4}</span></span>
+                <span>RANUENGAPID <span style={{ color: '#b8c4e0' }}>{ues[selectedIdx]?.ran_ue_ngap_id}</span></span>
+                <span>AMFUENGAPID <span style={{ color: '#b8c4e0' }}>{ues[selectedIdx]?.amf_ue_ngap_id}</span></span>
               </div>
             </div>
 
@@ -522,7 +689,7 @@ export default function Dashboard() {
                     padding: '5px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, transition: 'all 0.15s',
                     border: `1px solid ${selectedAction === a ? '#00d4ff' : '#1e3a5f'}`,
                     background: selectedAction === a ? 'rgba(0,212,255,0.1)' : 'transparent',
-                    color: selectedAction === a ? '#00d4ff' : '#94a3b8',
+                    color: selectedAction === a ? '#00d4ff' : '#b8c4e0',
                     fontWeight: selectedAction === a ? 500 : 400,
                     width: 130, textAlign: 'center', flexShrink: 0,
                   }}
@@ -551,7 +718,7 @@ export default function Dashboard() {
               {actionMsg && (
                 <div style={{
                   padding: '4px 10px', borderRadius: 4, fontSize: 11, whiteSpace: 'nowrap',
-                  fontFamily: 'JetBrains Mono, monospace',
+                  fontFamily: 'Consolas, Liberation Mono, Menlo, monospace',
                   background: actionLoading ? 'rgba(0,212,255,0.08)' : 'rgba(0,255,136,0.08)',
                   color: actionLoading ? '#00d4ff' : '#00ff88',
                   border: `1px solid ${actionLoading ? '#00d4ff33' : '#00ff8833'}`,
@@ -576,10 +743,10 @@ export default function Dashboard() {
           {showEvents && eventLog.length > 0 && (
             <div style={{ marginTop: 12, borderTop: '1px solid #1e3a5f', paddingTop: 8 }}>
               <Text type="secondary" style={{ fontSize: 11 }}>EVENT LOG</Text>
-              <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+              <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', fontSize: 11 }}>
                 {eventLog.map((evt: any, ei: number) => (
-                  <div key={ei} style={{ padding: '2px 0', color: '#94a3b8', borderBottom: '1px solid #1e293b' }}>
-                    <span style={{ color: '#64748b', marginRight: 8 }}>{new Date(evt.ts).toLocaleTimeString()}</span>
+                  <div key={ei} style={{ padding: '2px 0', color: '#b8c4e0', borderBottom: '1px solid #1e293b' }}>
+                    <span style={{ color: '#8a9bb8', marginRight: 8 }}>{new Date(evt.ts).toLocaleTimeString()}</span>
                     <span style={{ color: '#00d4ff', marginRight: 6 }}>[{evt.type}]</span>
                     <span>{evt.detail}</span>
                   </div>
@@ -590,14 +757,82 @@ export default function Dashboard() {
         </Card>
       )}
 
+      {/* Global Real-time Event Log Stream — reference: Cymas terminal-style logs */}
+      {showGlobalLogs && globalLogs.length > 0 && (
+        <Card
+          size="small"
+          title={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                <ThunderboltOutlined style={{ marginRight: 6, color: '#00d4ff' }} />
+                REAL-TIME EVENT LOG
+              </Text>
+              <Button size="small" type="text" style={{ fontSize: 11, color: '#8a9bb8' }} onClick={() => setGlobalLogs([])}>
+                Clear
+              </Button>
+            </div>
+          }
+          style={{ marginBottom: 16, flexShrink: 0, background: '#0a0e17', borderColor: '#1e3a5f' }}
+        >
+          <div
+            ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}
+            style={{
+              fontFamily: 'Consolas, Liberation Mono, Menlo, monospace',
+              fontSize: 11,
+              color: '#b8c4e0',
+              maxHeight: 200,
+              overflowY: 'auto',
+              background: '#0d1117',
+              borderRadius: 4,
+              padding: '8px 12px',
+            }}
+          >
+            {globalLogs.map((log, i) => (
+              <div key={i} style={{ padding: '1px 0', whiteSpace: 'nowrap' }}>
+                {log.includes('[ERROR]') || log.includes('failed') ? (
+                  <span style={{ color: '#ff4d4f' }}>{log}</span>
+                ) : log.includes('success') || log.includes('completed') || log.includes('accepted') ? (
+                  <span style={{ color: '#52c41a' }}>{log}</span>
+                ) : log.includes('Phase') ? (
+                  <span style={{ color: '#faad14' }}>{log}</span>
+                ) : (
+                  <span style={{ color: '#b8c4e0' }}>{log}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Provision log */}
       {provLog.length > 0 && (
         <Card size="small" title={<Text type="secondary" style={{ fontSize: 12 }}>PROVISION LOG</Text>} style={{ marginBottom: 16, flexShrink: 0 }}>
-          <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#94a3b8', maxHeight: 160, overflowY: 'auto' }}>
+          <div style={{ fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', fontSize: 11, color: '#b8c4e0', maxHeight: 160, overflowY: 'auto' }}>
             {provLog.map((l, i) => <div key={i}>{l}</div>)}
           </div>
         </Card>
       )}
+
+      {/* Settings Modal with Profile content */}
+      <Modal
+        open={settingsOpen}
+        onCancel={() => setSettingsOpen(false)}
+        footer={null}
+        width={960}
+        styles={{
+          content: {
+            padding: 0,
+          },
+          body: {
+            padding: '28px 32px',
+            maxHeight: '82vh',
+            overflowY: 'auto',
+          },
+        }}
+      >
+        <Profile />
+      </Modal>
+
     </div>
   );
 }

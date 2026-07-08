@@ -145,13 +145,13 @@ fi
 # ─── Start frontend dev server ───
 if [ "$START_FRONTEND" = true ]; then
     FRONTEND_PORT="${FRONTEND_PORT:-5173}"
-    echo -e "${CYAN}▸ Starting frontend dev server on port $FRONTEND_PORT ...${NC}"
+    echo -e "${CYAN}▸ Starting frontend dev server on port $FRONTEND_PORT (HTTPS) ...${NC}"
     cd "$FRONTEND_DIR"
     npx vite --host 0.0.0.0 --port "$FRONTEND_PORT" &
     FRONTEND_PID=$!
     cd "$SCRIPT_DIR"
     echo -e "${GREEN}  ✓ Frontend dev server running (PID $FRONTEND_PID)${NC}"
-    echo -e "    UI → http://0.0.0.0:$FRONTEND_PORT"
+    echo -e "    UI → https://<your-ip>:$FRONTEND_PORT (accept certificate warning for microphone)"
     echo ""
 fi
 

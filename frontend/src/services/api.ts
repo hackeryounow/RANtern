@@ -36,8 +36,8 @@ export const deregisterAllUEs = () =>
   api.post('/test/deregister-all');
 export const serviceRequestAllUEs = () =>
   api.post('/test/service-request-all');
-export const oneClickTest = () =>
-  api.post('/test/one-click-test');
+export const oneClickTest = (rounds: number = 1, interval: number = 0) =>
+  api.post('/test/one-click-test', { rounds, interval });
 export const restartService = () =>
   api.post('/test/restart');
 export const clearRedis = () =>

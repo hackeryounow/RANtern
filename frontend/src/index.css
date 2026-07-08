@@ -14,19 +14,19 @@
   --success:       #00ff88;
   --warning:       #ffaa00;
   --error:         #ff4444;
-  --text:          #e0e7ff;
-  --text-secondary:#94a3c0;
-  --text-muted:    #5a6988;
+  --text:          #f0f4ff;
+  --text-secondary:#b8c4e0;
+  --text-muted:    #7a8db0;
 
   /* ── layout ── */
   --sidebar-width:      220px;
   --sidebar-collapsed:   48px;
 
   /* ── typography ── */
-  --font-sans:  'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, monospace;
+  --font-sans:  -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:  'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   --font-h1:    24px;
-  --font-body:  13px;
+  --font-body:  14px;
 
   /* ── effects ── */
   --glow-accent: 0 0 10px rgba(0, 212, 255, 0.25);
@@ -41,10 +41,12 @@ html{font-size:14px}
 body{
   font-family:var(--font-sans);
   font-size:var(--font-body);
+  font-weight:400;
   color:var(--text);
   background:var(--bg-primary);
-  line-height:1.5;
+  line-height:1.6;
   -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
   overflow:hidden;
 }
 #root{min-height:100vh}
@@ -190,7 +192,7 @@ select.input{
   letter-spacing:0.5px;
 }
 .badge-running{background:rgba(0,212,255,0.12);color:var(--accent)}
-.badge-idle{background:rgba(148,163,192,0.1);color:var(--text-muted)}
+.badge-idle{background:rgba(184,196,224,0.1);color:var(--text-secondary)}
 .badge-success{background:rgba(0,255,136,0.1);color:var(--success)}
 .badge-error{background:rgba(255,68,68,0.1);color:var(--error)}
 
@@ -206,9 +208,9 @@ select.input{
 .data-table th{
   text-align:left;
   padding:8px 10px;
-  color:var(--text-muted);
+  color:var(--text-secondary);
   font-weight:600;
-  font-size:10px;
+  font-size:11px;
   text-transform:uppercase;
   letter-spacing:0.5px;
   border-bottom:1px solid var(--border-color);
@@ -217,7 +219,7 @@ select.input{
 .data-table td{
   padding:7px 10px;
   border-bottom:1px solid rgba(30,58,95,0.5);
-  color:var(--text-secondary);
+  color:var(--text);
 }
 .data-table tbody tr:hover{background:var(--accent-bg)}
 .data-table tbody tr{cursor:default;transition:background var(--transition)}
@@ -383,4 +385,36 @@ select.input{
   background: rgba(255, 170, 0, 0.15);
   color: var(--warning);
   border: 1px solid rgba(255, 170, 0, 0.3);
+}
+
+/* ── Modal: unified dark background ── */
+.ant-modal-content {
+  background: #141422 !important;
+}
+.ant-modal .ant-tabs-nav,
+.ant-modal .ant-tabs-tab {
+  background: transparent !important;
+}
+.ant-modal .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #00d4ff !important;
+}
+.ant-modal .ant-card,
+.ant-modal .ant-card-body {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.ant-modal .ant-tabs-content {
+  background: transparent !important;
+}
+.ant-modal .ant-input,
+.ant-modal .ant-input-affix-wrapper,
+.ant-modal .ant-select-selector,
+.ant-modal .ant-select-selection-item,
+.ant-modal .ant-input-password {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.ant-modal .ant-btn-default {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }

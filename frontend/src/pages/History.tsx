@@ -80,7 +80,7 @@ export default function History() {
 
   const plotlyLayout: any = {
     paper_bgcolor: '#111827', plot_bgcolor: '#0a0e17',
-    font: { color: '#e0e7ff', family: 'JetBrains Mono, monospace', size: 11 },
+    font: { color: '#e0e7ff', family: 'Consolas, Liberation Mono, Menlo, monospace', size: 11 },
     margin: { t: 30, r: 20, b: 40, l: 60 },
     yaxis: { title: 'Latency (ms)', gridcolor: '#1e3a5f' },
     xaxis: { gridcolor: '#1e3a5f' },
@@ -91,7 +91,7 @@ export default function History() {
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0, color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace' }}>
+        <Typography.Title level={4} style={{ margin: 0, color: '#00d4ff', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' }}>
           ◎ Test History
         </Typography.Title>
         <Button
@@ -134,7 +134,7 @@ export default function History() {
               onMouseLeave={e => { if (selected?.test_id !== r.id) e.currentTarget.style.background = 'transparent'; }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#00d4ff', marginBottom: 3 }}>
+                <div style={{ fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', fontSize: 11, color: '#00d4ff', marginBottom: 3 }}>
                   {r.timestamp}
                 </div>
                 <Space size={4} wrap>
@@ -167,7 +167,7 @@ export default function History() {
             <>
               {/* Parameters */}
               <Card size="small" title={<Text type="secondary" style={{ fontSize: 11 }}>PARAMETERS</Text>}>
-                <pre style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#94a3b8', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                <pre style={{ fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', fontSize: 11, color: '#94a3b8', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                   {JSON.stringify(selected.parameters, null, 1)}
                 </pre>
               </Card>
@@ -176,7 +176,7 @@ export default function History() {
               <Card size="small" title={<Text type="secondary" style={{ fontSize: 11 }}>UE DETAILS ({selected.ue_details?.length ?? 0})</Text>}>
                 {selected.ue_details?.length > 0 ? (
                   <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                    <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace', fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid #1e3a5f' }}>
                           {['IMSI','IPv4','RANUENGAPID','AMFUENGAPID','State','Reg (ms)','Session (ms)','Total (ms)','Release (ms)','Dereg (ms)','SR (ms)'].map(h => (
