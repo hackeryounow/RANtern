@@ -1,0 +1,25 @@
+# Custom Core Network — managed by RANtern
+# Define your own NF containers here.
+# All containers should use "core-" prefix and the "core-net" network.
+# Labels "core-network: custom" and "nf-type: <name>" are required.
+version: "3.8"
+
+services: {}
+  # Example:
+  # my-nf:
+  #   container_name: core-my-nf
+  #   image: my-registry/my-nf:latest
+  #   expose:
+  #     - "8080"
+  #   networks:
+  #     core-net:
+  #       aliases:
+  #         - my-nf.local
+  #   labels:
+  #     core-network: custom
+  #     nf-type: my-nf
+
+networks:
+  core-net:
+    name: core-net
+    external: true

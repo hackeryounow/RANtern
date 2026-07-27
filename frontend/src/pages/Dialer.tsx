@@ -449,7 +449,7 @@ export default function Dialer() {
         centered
         width={360}
         styles={{
-          content: {
+          container: {
             background: 'linear-gradient(145deg, rgba(20, 27, 45, 0.95) 0%, rgba(10, 14, 23, 0.9) 100%)',
             backdropFilter: 'blur(24px)',
             border: '1px solid rgba(250, 173, 20, 0.25)',

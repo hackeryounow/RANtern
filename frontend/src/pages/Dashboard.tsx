@@ -820,7 +820,7 @@ export default function Dashboard() {
         footer={null}
         width={960}
         styles={{
-          content: {
+          container: {
             padding: 0,
           },
           body: {

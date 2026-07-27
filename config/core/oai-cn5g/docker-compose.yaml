@@ -1,0 +1,167 @@
+# OAI CN5G Core Network — managed by RANtern
+# All NF containers prefixed "core-" for identification
+version: "3.8"
+
+services:
+  mysql:
+    container_name: core-mysql
+    image: mysql:9.0
+    environment:
+      MYSQL_ROOT_PASSWORD: linux
+      MYSQL_DATABASE: oai_db
+    volumes:
+      - core-dbdata:/var/lib/mysql
+    expose:
+      - "3306"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.2
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-plinux"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    labels:
+      core-network: oai-cn5g
+      nf-type: database
+
+  oai-udr:
+    container_name: core-udr
+    image: oaisoftwarealliance/oai-udr:v2.2.0
+    expose:
+      - "80/tcp"
+    environment:
+      UDR_CONF: /open5gs/etc/udr.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.3
+    depends_on:
+      mysql:
+        condition: service_healthy
+    labels:
+      core-network: oai-cn5g
+      nf-type: udr
+
+  oai-udm:
+    container_name: core-udm
+    image: oaisoftwarealliance/oai-udm:v2.2.0
+    expose:
+      - "80/tcp"
+    environment:
+      UDM_CONF: /open5gs/etc/udm.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.4
+    depends_on:
+      - oai-udr
+    labels:
+      core-network: oai-cn5g
+      nf-type: udm
+
+  oai-ausf:
+    container_name: core-ausf
+    image: oaisoftwarealliance/oai-ausf:v2.2.0
+    expose:
+      - "80/tcp"
+    environment:
+      AUSF_CONF: /open5gs/etc/ausf.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.5
+    depends_on:
+      - oai-udm
+    labels:
+      core-network: oai-cn5g
+      nf-type: ausf
+
+  oai-nrf:
+    container_name: core-nrf
+    image: oaisoftwarealliance/oai-nrf:v2.2.0
+    expose:
+      - "80/tcp"
+    environment:
+      NRF_CONF: /open5gs/etc/nrf.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.6
+    labels:
+      core-network: oai-cn5g
+      nf-type: nrf
+
+  oai-amf:
+    container_name: core-amf
+    image: oaisoftwarealliance/oai-amf:v2.2.0
+    expose:
+      - "80/tcp"
+      - "38412/sctp"
+    environment:
+      AMF_CONF: /open5gs/etc/amf.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.7
+    depends_on:
+      - oai-nrf
+    labels:
+      core-network: oai-cn5g
+      nf-type: amf
+
+  oai-smf:
+    container_name: core-smf
+    image: oaisoftwarealliance/oai-smf:v2.2.0
+    expose:
+      - "80/tcp"
+    environment:
+      SMF_CONF: /open5gs/etc/smf.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.8
+    depends_on:
+      - oai-nrf
+      - oai-upf
+    labels:
+      core-network: oai-cn5g
+      nf-type: smf
+
+  oai-upf:
+    container_name: core-upf
+    image: oaisoftwarealliance/oai-upf:v2.2.0
+    expose:
+      - "2152/udp"
+      - "8805/udp"
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    environment:
+      UPF_CONF: /open5gs/etc/upf.yaml
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.9
+    labels:
+      core-network: oai-cn5g
+      nf-type: upf
+
+  oai-ext-dn:
+    container_name: core-ext-dn
+    image: oaisoftwarealliance/trf-gen-cn5g:latest
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.10
+    labels:
+      core-network: oai-cn5g
+      nf-type: ext-dn
+
+networks:
+  core-net:
+    name: core-net
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.100.200.0/24
+    driver_opts:
+      com.docker.network.bridge.name: br-core
+
+volumes:
+  core-dbdata:

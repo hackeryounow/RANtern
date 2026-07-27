@@ -1,0 +1,4 @@
+; Reference only — runtime writes split files via docker-entrypoint.sh:
+;   pjsip.global.conf, pjsip.transport.conf, pjsip.auth.conf,
+;   pjsip.aor.conf, pjsip.endpoint.conf
+; [1001] type=aor lives in pjsip.aor.conf; [1001] type=endpoint in pjsip.endpoint.conf.

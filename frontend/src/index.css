@@ -231,6 +231,50 @@ select.input{
 .pulse{animation:pulse 1.8s ease-in-out infinite}
 
 /* ============================================================
+   ANIMATED ITALIC BRAND TITLE ("Core Network")
+   ============================================================ */
+.brand-logo{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  margin:0;
+  font-style:italic;
+  font-weight:700;
+  font-family:var(--font-mono);
+  letter-spacing:0.5px;
+  font-size:20px;
+  line-height:1;
+}
+.brand-logo .brand-icon{
+  color:var(--accent);
+  font-style:normal;
+  font-size:18px;
+  filter:drop-shadow(0 0 6px rgba(0,212,255,0.5));
+  animation:brand-spin 6s linear infinite;
+}
+.brand-logo .brand-text{
+  background:linear-gradient(90deg,#00d4ff 0%,#6366f1 25%,#a855f7 50%,#6366f1 75%,#00d4ff 100%);
+  background-size:200% auto;
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+  color:transparent;
+  animation:brand-shimmer 4s linear infinite, brand-glow 2.6s ease-in-out infinite;
+}
+@keyframes brand-shimmer{
+  0%{background-position:0% center}
+  100%{background-position:200% center}
+}
+@keyframes brand-glow{
+  0%,100%{filter:drop-shadow(0 0 2px rgba(0,212,255,0.25))}
+  50%{filter:drop-shadow(0 0 8px rgba(99,102,241,0.55))}
+}
+@keyframes brand-spin{
+  from{transform:rotate(0deg)}
+  to{transform:rotate(360deg)}
+}
+
+/* ============================================================
    SIDEBAR — handled by Ant Design Sider
    ============================================================ */
 
@@ -417,4 +461,218 @@ select.input{
 .ant-modal .ant-btn-default {
   background: transparent !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* ── Topology toolbar (icon-only buttons, TopoViewer style) ── */
+.topo-toolbar {
+  display: inline-flex;
+  align-items: center;
+}
+.topo-tbtn {
+  width: 30px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: #b8c4e0 !important;
+  font-size: 15px !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease;
+}
+.topo-tbtn:hover {
+  color: #f0f4ff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+.topo-tbtn-run {
+  color: #52c41a !important;
+}
+.topo-tbtn-run:hover {
+  color: #73d13d !important;
+  background: rgba(82, 196, 26, 0.1) !important;
+}
+.topo-tbtn-stop {
+  color: #ff4d4f !important;
+}
+.topo-tbtn-stop:hover {
+  color: #ff7875 !important;
+  background: rgba(255, 77, 79, 0.1) !important;
+}
+.topo-toolbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: rgba(255, 255, 255, 0.12);
+  vertical-align: middle;
+}
+.topo-tbtn-active {
+  color: #00d4ff !important;
+  background: rgba(0, 212, 255, 0.08) !important;
+}
+
+/* ── YAML modal editor ── */
+.yaml-modal-editor {
+  width: 100%;
+  height: 55vh;
+  resize: vertical;
+  border: 1px solid #1e3a5f;
+  border-radius: 6px;
+  outline: none;
+  padding: 10px 12px;
+  font-family: Consolas, Liberation Mono, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e0e7ff;
+  background: #0a0e17;
+  tab-size: 2;
+}
+.yaml-modal-editor::placeholder {
+  color: #4a5568;
+}
+
+/* ── Inspect panel (bottom table) ── */
+.inspect-panel {
+  border-top: 1px solid #1e3a5f;
+  background: #0d1117;
+  padding: 4px 12px 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.inspect-panel .ant-tabs-nav {
+  margin-bottom: 4px !important;
+}
+.inspect-panel .ant-table {
+  background: transparent !important;
+  font-size: 13px;
+}
+.inspect-panel .ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #8a9bb8 !important;
+  font-size: 12px !important;
+  padding: 6px 10px !important;
+  border-bottom: 1px solid #1e3a5f !important;
+}
+.inspect-panel .ant-table-tbody > tr > td {
+  padding: 6px 10px !important;
+  border-bottom: 1px solid rgba(30, 58, 95, 0.4) !important;
+  color: #e0e7ff;
+}
+.inspect-panel .ant-table-tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* ── Compact Docker-image upload drop zone (ImagesDrawer) ── */
+/* The inline style on <Upload.Dragger> only reaches the outer wrapper; the
+   visible height comes from antd's inner .ant-upload-btn padding, so shrink
+   it here to keep the zone slim. */
+.compact-dragger.ant-upload-drag {
+  max-height: 64px !important;
+  flex: none !important;
+}
+.compact-dragger.ant-upload-drag .ant-upload-btn {
+  padding: 12px 0 !important;
+  min-height: unset !important;
+}
+
+/* ── Docs markdown rendering ── */
+.docs-markdown {
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.docs-markdown h1 {
+  color: #00d4ff;
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e3a5f;
+}
+.docs-markdown h2 {
+  color: #7dd3fc;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 32px 0 12px;
+}
+.docs-markdown h3 {
+  color: #a5b4fc;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 24px 0 8px;
+}
+.docs-markdown p {
+  margin: 8px 0;
+}
+.docs-markdown a {
+  color: #00d4ff;
+  text-decoration: none;
+}
+.docs-markdown a:hover {
+  text-decoration: underline;
+}
+.docs-markdown code {
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+}
+.docs-markdown pre {
+  background: #0d1117;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.docs-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+}
+.docs-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.docs-markdown th {
+  background: rgba(0, 212, 255, 0.06);
+  color: #7dd3fc;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid #1e3a5f;
+}
+.docs-markdown td {
+  padding: 8px 12px;
+  border: 1px solid #1e3a5f;
+}
+.docs-markdown tr:hover td {
+  background: rgba(0, 212, 255, 0.03);
+}
+.docs-markdown ul, .docs-markdown ol {
+  padding-left: 24px;
+  margin: 8px 0;
+}
+.docs-markdown li {
+  margin: 4px 0;
+}
+.docs-markdown blockquote {
+  border-left: 3px solid #00d4ff;
+  margin: 12px 0;
+  padding: 8px 16px;
+  background: rgba(0, 212, 255, 0.04);
+  color: #94a3b8;
+}
+.docs-markdown strong {
+  color: #f0f4ff;
+}
+.docs-markdown hr {
+  border: none;
+  border-top: 1px solid #1e3a5f;
+  margin: 24px 0;
 }

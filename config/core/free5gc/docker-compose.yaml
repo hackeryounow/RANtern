@@ -1,0 +1,219 @@
+# Free5GC Core Network — managed by RANtern
+# All NF containers are prefixed "core-" for easy identification
+version: "3.8"
+
+services:
+  db:
+    container_name: core-mongodb
+    image: mongo:3.6.8
+    command: mongod --port 27017
+    expose:
+      - "27017"
+    volumes:
+      - core-dbdata:/data/db
+    networks:
+      core-net:
+        aliases:
+          - db
+    labels:
+      core-network: free5gc
+      nf-type: database
+
+  nrf:
+    container_name: core-nrf
+    image: free5gc/nrf:v4.0.1
+    command: ./nrf -c ./config/nrfcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      DB_URI: mongodb://db/free5gc
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - nrf.free5gc.org
+    depends_on:
+      - db
+    labels:
+      core-network: free5gc
+      nf-type: nrf
+
+  amf:
+    container_name: core-amf
+    image: free5gc/amf:v4.0.1
+    command: ./amf -c ./config/amfcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - amf.free5gc.org
+    depends_on:
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: amf
+
+  smf:
+    container_name: core-smf
+    image: free5gc/smf:v4.0.1
+    command: ./smf -c ./config/smfcfg.yaml -u ./config/uerouting.yaml
+    expose:
+      - "8000"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - smf.free5gc.org
+    depends_on:
+      - nrf
+      - upf
+    labels:
+      core-network: free5gc
+      nf-type: smf
+
+  upf:
+    container_name: core-upf
+    image: free5gc/upf:v4.0.1
+    command: bash -c "./upf-iptables.sh && ./upf -c ./config/upfcfg.yaml"
+    cap_add:
+      - NET_ADMIN
+    networks:
+      core-net:
+        aliases:
+          - upf.free5gc.org
+    labels:
+      core-network: free5gc
+      nf-type: upf
+
+  ausf:
+    container_name: core-ausf
+    image: free5gc/ausf:v4.0.1
+    command: ./ausf -c ./config/ausfcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - ausf.free5gc.org
+    depends_on:
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: ausf
+
+  nssf:
+    container_name: core-nssf
+    image: free5gc/nssf:v4.0.1
+    command: ./nssf -c ./config/nssfcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - nssf.free5gc.org
+    depends_on:
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: nssf
+
+  pcf:
+    container_name: core-pcf
+    image: free5gc/pcf:v4.0.1
+    command: ./pcf -c ./config/pcfcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - pcf.free5gc.org
+    depends_on:
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: pcf
+
+  udm:
+    container_name: core-udm
+    image: free5gc/udm:v4.0.1
+    command: ./udm -c ./config/udmcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - udm.free5gc.org
+    depends_on:
+      - db
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: udm
+
+  udr:
+    container_name: core-udr
+    image: free5gc/udr:v4.0.1
+    command: ./udr -c ./config/udrcfg.yaml
+    expose:
+      - "8000"
+    environment:
+      DB_URI: mongodb://db/free5gc
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - udr.free5gc.org
+    depends_on:
+      - db
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: udr
+
+  webui:
+    container_name: core-webui
+    image: free5gc/webui:v4.0.1
+    command: ./webui -c ./config/webuicfg.yaml
+    expose:
+      - "2121"
+    environment:
+      GIN_MODE: release
+    networks:
+      core-net:
+        aliases:
+          - webui
+    ports:
+      - "5000:5000"
+      - "2122:2122"
+      - "2121:2121"
+    depends_on:
+      - db
+      - nrf
+    labels:
+      core-network: free5gc
+      nf-type: webui
+
+networks:
+  core-net:
+    name: core-net
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.100.200.0/24
+    driver_opts:
+      com.docker.network.bridge.name: br-core
+
+volumes:
+  core-dbdata:

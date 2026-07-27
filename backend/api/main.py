@@ -19,7 +19,7 @@ if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
 from api.ws import ws_hub
-from api.routes import provision, test, config, profiles
+from api.routes import provision, test, config, profiles, core_network, topology, docker_images, components, docs
 
 
 @asynccontextmanager
@@ -51,8 +51,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Redis not available ({e}); UE state will not be persisted")
 
+    # Initialize PostgreSQL (users, test history, call records, feedbacks)
+    try:
+        from api.db import init_db
+        await init_db()
+        # Seed the NF component catalog (idempotent; no-op without PG)
+        from api.db import seed_nf_components
+        seed_nf_components()
+    except Exception as e:
+        logger.warning(f"PostgreSQL not available ({e}); history will use file-based storage")
+
     yield
-    # shutdown: nothing special needed
+    # Shutdown: close PostgreSQL pool
+    try:
+        from api.db import close_pool
+        close_pool()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -76,6 +91,11 @@ app.include_router(provision.router, prefix="/api", tags=["Provision"])
 app.include_router(test.router, prefix="/api", tags=["Test"])
 app.include_router(config.router, prefix="/api", tags=["Config"])
 app.include_router(profiles.router, prefix="/api", tags=["Profiles"])
+app.include_router(core_network.router, prefix="/api", tags=["Core Network"])
+app.include_router(topology.router, prefix="/api", tags=["Topology"])
+app.include_router(docker_images.router, prefix="/api", tags=["Docker Images"])
+app.include_router(components.router, prefix="/api", tags=["NF Components"])
+app.include_router(docs.router, prefix="/api", tags=["Docs"])
 
 
 @app.get("/api/health")
@@ -93,7 +113,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if data == "ping":
                 await websocket.send_text("pong")
                 continue
-            # Handle SIP-related JSON messages (参考 VoxEra)
+            # Handle SIP-related JSON messages
             try:
                 msg = json.loads(data)
                 msg_type = msg.get("type")

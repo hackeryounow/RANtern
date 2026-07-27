@@ -21,6 +21,28 @@ services:
       retries: 5
       start_period: 5s
 
+  # ── PostgreSQL ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: rantern-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rantern}
+      POSTGRES_USER: ${POSTGRES_USER:-rantern}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rantern_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - rantern-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rantern} -d ${POSTGRES_DB:-rantern}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # ── Backend (Python FastAPI) ──
   backend:
     build:
@@ -37,9 +59,12 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-rantern}:${POSTGRES_PASSWORD:-rantern_dev}@postgres:5432/${POSTGRES_DB:-rantern}
       - PYTHONUNBUFFERED=1
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - rantern-net
@@ -52,6 +77,38 @@ services:
     volumes:
       - ./backend/data:/app/data
       - ./backend/coresimrunner:/app/coresimrunner
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/core:/app/config/core:ro
+
+  # ── Asterisk (SIP / WebRTC PBX) ──
+  asterisk:
+    build:
+      context: ./asterisk
+      dockerfile: Dockerfile
+      args:
+        CONFIG_REVISION: ${IMAGE_TAG:-local}
+    container_name: rantern-asterisk
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/asterisk-healthcheck.sh"]
+      interval: 10s
+      timeout: 20s
+      retries: 12
+      start_period: 180s
+    ports:
+      - "${ASTERISK_WSS_PORT:-8089}:${ASTERISK_WSS_PORT:-8089}/tcp"
+      - "${ASTERISK_SIP_PORT:-5060}:5060/udp"
+      - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10099}:${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10099}/udp"
+    volumes:
+      - asterisk-logs:/var/log/asterisk
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      ASTERISK_EXTERNAL_IP: ${ASTERISK_EXTERNAL_IP:-${PUBLIC_HOST:-127.0.0.1}}
+      ASTERISK_WS_PORT: ${ASTERISK_WSS_PORT:-8089}
+      ASTERISK_UID: ${ASTERISK_UID:-1000}
+      ASTERISK_GID: ${ASTERISK_GID:-1000}
+    networks:
+      - rantern-net
 
   # ── Frontend (React + Vite → Nginx) ──
   frontend:
@@ -61,6 +118,9 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
         VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000/ws}
+        VITE_SIP_WS_URL: ${VITE_SIP_WS_URL:-ws://${ASTERISK_EXTERNAL_IP:-127.0.0.1}:8089/ws}
+        VITE_SIP_URI: ${VITE_SIP_URI:-sip:1001@${ASTERISK_EXTERNAL_IP:-127.0.0.1}}
+        VITE_SIP_PASSWORD: ${VITE_SIP_PASSWORD:-1001}
     container_name: rantern-frontend
     restart: unless-stopped
     ports:
@@ -87,3 +147,5 @@ networks:
 
 volumes:
   redis-data:
+  pgdata:
+  asterisk-logs:

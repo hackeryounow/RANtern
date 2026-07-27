@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gcc \
     libffi-dev \
+    tshark \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first (for layer caching)

@@ -7,6 +7,8 @@ import {
   PhoneOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  CloudServerOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -14,8 +16,10 @@ const { Sider, Content } = AntLayout;
 
 const navItems = [
   { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
+  { key: '/core-network', icon: <CloudServerOutlined />, label: 'Core Network' },
   { key: '/dialer', icon: <PhoneOutlined />, label: 'Dialer' },
   { key: '/history', icon: <HistoryOutlined />, label: 'History' },
+  { key: '/docs', icon: <BookOutlined />, label: 'Docs' },
 ];
 
 export default function Layout() {
@@ -80,7 +84,7 @@ export default function Layout() {
                 <div style={{ color: '#00d4ff', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
                   CoreSimRunner
                 </div>
-                <div style={{ color: '#64748b', fontSize: 10, whiteSpace: 'nowrap' }}>
+                <div style={{ color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' }}>
                   5G/4G Test Platform
                 </div>
               </div>

@@ -101,7 +101,7 @@ export function SIPProvider({ children }: { children: React.ReactNode }) {
           if (sipMatch) parsed.extension = sipMatch[1];
         }
         return {
-          websocketUrl: parsed.websocketUrl || `ws://${typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1'}:8089/ws`,
+          websocketUrl: parsed.websocketUrl || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/sip-ws`,
           extension: String(parsed.extension || '').replace(/[^\d]/g, '') || '1001',
           password: parsed.password || '',
           displayName: parsed.displayName || 'CoreSim',
@@ -110,9 +110,10 @@ export function SIPProvider({ children }: { children: React.ReactNode }) {
         // fall through to default
       }
     }
-    const defaultHost = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
+    const wsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = typeof window !== 'undefined' ? window.location.host : '127.0.0.1';
     return {
-      websocketUrl: `ws://${defaultHost}:8089/ws`,
+      websocketUrl: `${wsProto}//${host}/sip-ws`,
       extension: '1001',
       password: '',
       displayName: 'CoreSim',
@@ -345,7 +346,7 @@ export function SIPProvider({ children }: { children: React.ReactNode }) {
         setUaLive(false);
         setConnectionStatus('disconnected');
 
-        const attemptedExt = ext || extensionRef.current || parseSipUri(sipConfig.uri).extension;
+        const attemptedExt = ext || extensionRef.current || sipConfig.extension;
         let msg = `Registration failed: ${detail}`;
         if (String(detail).startsWith('404')) {
           msg += ` — Registrar AOR mismatch (server needs aors=${attemptedExt || 'ext'}).`;

@@ -11,6 +11,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - REDIS_DB=0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-rantern}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rantern}
       - PYTHONUNBUFFERED=1
     deploy:
       resources:
@@ -18,13 +19,47 @@ services:
           cpus: '2.0'
           memory: 1G
 
+  asterisk:
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST}
+      ASTERISK_EXTERNAL_IP: ${ASTERISK_EXTERNAL_IP:-${PUBLIC_HOST}}
+      ASTERISK_WS_PORT: ${ASTERISK_WSS_PORT:-8089}
+      ASTERISK_UID: ${ASTERISK_UID:-1000}
+      ASTERISK_GID: ${ASTERISK_GID:-1000}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
   frontend:
+    build:
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_WS_URL: ${VITE_WS_URL:-}
+        VITE_SIP_WS_URL: ${VITE_SIP_WS_URL:-wss://${PUBLIC_HOST}/sip-ws}
+        VITE_SIP_URI: ${VITE_SIP_URI:-sip:1001@${PUBLIC_HOST}}
+        VITE_SIP_PASSWORD: ${VITE_SIP_PASSWORD:-1001}
+        VITE_SIP_DEBUG: ${VITE_SIP_DEBUG:-true}
     restart: unless-stopped
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 256M
+
+  postgres:
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rantern}
+      POSTGRES_USER: ${POSTGRES_USER:-rantern}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   redis:
     restart: unless-stopped

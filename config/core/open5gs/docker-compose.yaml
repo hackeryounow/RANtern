@@ -1,0 +1,241 @@
+# Open5GS Core Network — managed by RANtern
+# All NF containers prefixed "core-" for identification
+version: "3.8"
+
+services:
+  mongo:
+    container_name: core-mongodb
+    image: mongo:6.0
+    command: --bind_ip 0.0.0.0
+    volumes:
+      - core-dbdata:/data/db
+    expose:
+      - "27017"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.2
+    labels:
+      core-network: open5gs
+      nf-type: database
+
+  webui:
+    container_name: core-webui
+    image: docker_open5gs
+    depends_on:
+      - mongo
+    environment:
+      - COMPONENT_NAME=webui
+    expose:
+      - "9999/tcp"
+    ports:
+      - "9999:9999/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.3
+    labels:
+      core-network: open5gs
+      nf-type: webui
+
+  nrf:
+    container_name: core-nrf
+    image: docker_open5gs
+    environment:
+      - COMPONENT_NAME=nrf
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.4
+    labels:
+      core-network: open5gs
+      nf-type: nrf
+
+  scp:
+    container_name: core-scp
+    image: docker_open5gs
+    depends_on:
+      - nrf
+    environment:
+      - COMPONENT_NAME=scp
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.5
+    labels:
+      core-network: open5gs
+      nf-type: scp
+
+  ausf:
+    container_name: core-ausf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=ausf
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.6
+    labels:
+      core-network: open5gs
+      nf-type: ausf
+
+  udr:
+    container_name: core-udr
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+      - mongo
+    environment:
+      - COMPONENT_NAME=udr
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.7
+    labels:
+      core-network: open5gs
+      nf-type: udr
+
+  udm:
+    container_name: core-udm
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=udm
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.8
+    labels:
+      core-network: open5gs
+      nf-type: udm
+
+  pcf:
+    container_name: core-pcf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=pcf
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.9
+    labels:
+      core-network: open5gs
+      nf-type: pcf
+
+  nssf:
+    container_name: core-nssf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=nssf
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.10
+    labels:
+      core-network: open5gs
+      nf-type: nssf
+
+  bsf:
+    container_name: core-bsf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=bsf
+    expose:
+      - "7777/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.11
+    labels:
+      core-network: open5gs
+      nf-type: bsf
+
+  smf:
+    container_name: core-smf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+      - upf
+    environment:
+      - COMPONENT_NAME=smf
+    expose:
+      - "7777/tcp"
+      - "9090/tcp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.12
+    labels:
+      core-network: open5gs
+      nf-type: smf
+
+  upf:
+    container_name: core-upf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=upf
+    expose:
+      - "2152/udp"
+      - "8805/udp"
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.13
+    labels:
+      core-network: open5gs
+      nf-type: upf
+
+  amf:
+    container_name: core-amf
+    image: docker_open5gs
+    depends_on:
+      - nrf
+      - scp
+    environment:
+      - COMPONENT_NAME=amf
+    expose:
+      - "7777/tcp"
+      - "38412/sctp"
+    networks:
+      core-net:
+        ipv4_address: 10.100.200.14
+    labels:
+      core-network: open5gs
+      nf-type: amf
+
+networks:
+  core-net:
+    name: core-net
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.100.200.0/24
+    driver_opts:
+      com.docker.network.bridge.name: br-core
+
+volumes:
+  core-dbdata:

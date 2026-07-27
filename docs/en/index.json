@@ -1,0 +1,10 @@
+[
+  { "id": "quick-start", "title": "Quick Start", "file": "quick-start.md" },
+  { "id": "architecture", "title": "Architecture", "file": "architecture.md" },
+  { "id": "nf-functions", "title": "3GPP NF Functions", "file": "nf-functions.md" },
+  { "id": "nf-components", "title": "NF Components", "file": "nf-components.md" },
+  { "id": "procedures", "title": "Core Network Procedures", "file": "procedures.md" },
+  { "id": "topology-editor", "title": "Topology Editor", "file": "topology-editor.md" },
+  { "id": "deployment", "title": "Deployment & Configuration", "file": "deployment.md" },
+  { "id": "faq", "title": "FAQ", "file": "faq.md" }
+]

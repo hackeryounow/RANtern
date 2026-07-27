@@ -1,0 +1,11 @@
+[general]
+servername=Asterisk
+
+enabled=yes
+bindaddr=0.0.0.0
+bindport=${ASTERISK_WS_PORT}
+
+enable_status=yes
+
+[websocket]
+enabled=yes

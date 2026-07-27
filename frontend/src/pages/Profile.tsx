@@ -10,7 +10,7 @@ import {
   SearchOutlined, DownOutlined, RightOutlined,
   TagOutlined, MobileOutlined, CloudOutlined,
   ApiOutlined, LinkOutlined, SafetyOutlined,
-  AppstoreOutlined,
+  AppstoreOutlined, PhoneOutlined,
 } from '@ant-design/icons';
 import {
   listProfiles, getProfile, createProfile, updateProfile, deleteProfile, activateProfile,
@@ -73,6 +73,14 @@ const PROVISION_SORT_ORDER = [
   'WEBUI_PORT', 'FREE5GC_SUBSCRIPTION_TEMPLATE', 'OPEN5GS_SUBSCRIPTION_TEMPLATE',
 ];
 
+const VOERA_SORT_ORDER = [
+  'PUBLIC_HOST', 'ASTERISK_EXTERNAL_IP',
+  'VITE_API_URL', 'VITE_SIP_WS_URL', 'VITE_SIP_URI', 'VITE_SIP_PASSWORD',
+  'PORT', 'JWT_SECRET',
+  'ASTERISK_HOST', 'ASTERISK_PORT', 'ASTERISK_WSS_PORT',
+  'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'DATABASE_URL',
+];
+
 const CATEGORIES: { key: string; label: string; icon: React.ReactNode; color: string; matchers: (k: string) => boolean }[] = [
   {
     key: 'common',
@@ -108,6 +116,13 @@ const CATEGORIES: { key: string; label: string; icon: React.ReactNode; color: st
     icon: <CloudOutlined />,
     color: '#a78bfa',
     matchers: k => /^(MSISDN_PREFIXES|MSISDN_LENGTH|ENABLE_IMS)/i.test(k),
+  },
+  {
+    key: 'voera',
+    label: 'VoEra',
+    icon: <PhoneOutlined />,
+    color: '#f56a00',
+    matchers: k => /^(PUBLIC_HOST|ASTERISK_|VITE_API_URL|VITE_SIP_|PORT|JWT_SECRET|POSTGRES_|DATABASE_URL)/i.test(k),
   },
   {
     key: 'redis',
@@ -161,6 +176,8 @@ function CategorizedProfileForm({ values, setValues, searchQuery, setSearchQuery
       if (ci !== -1) return ci;
       const pi = PROVISION_SORT_ORDER.indexOf(key);
       if (pi !== -1) return pi;
+      const vi = VOERA_SORT_ORDER.indexOf(key);
+      if (vi !== -1) return vi;
       return 9999;
     };
     const ao = getOrder(a);

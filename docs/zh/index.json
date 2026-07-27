@@ -1,0 +1,10 @@
+[
+  { "id": "quick-start", "title": "快速开始", "file": "quick-start.md" },
+  { "id": "architecture", "title": "系统架构", "file": "architecture.md" },
+  { "id": "nf-functions", "title": "3GPP 网元功能", "file": "nf-functions.md" },
+  { "id": "nf-components", "title": "网元组件介绍", "file": "nf-components.md" },
+  { "id": "procedures", "title": "核心网流程", "file": "procedures.md" },
+  { "id": "topology-editor", "title": "拓扑编辑器", "file": "topology-editor.md" },
+  { "id": "deployment", "title": "部署与配置", "file": "deployment.md" },
+  { "id": "faq", "title": "常见问题", "file": "faq.md" }
+]

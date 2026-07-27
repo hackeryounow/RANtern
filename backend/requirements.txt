@@ -3,6 +3,10 @@ fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 websockets>=11.0
 redis>=4.0.0
+docker>=7.0.0
+python-multipart>=0.0.6
+psycopg2-binary>=2.9.0
+PyYAML>=5.0
 
 # Install coresimrunner package
 -e .
