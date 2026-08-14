@@ -1,6 +1,6 @@
 /**
  * SIPContext.tsx
- * Global React context for SIP state management (参考 VoxEra SIPContext).
+ * Global React context for SIP state management (modeled after VoxEra SIPContext).
  */
 
 import { createContext, useState, useCallback, useRef, useEffect } from 'react';

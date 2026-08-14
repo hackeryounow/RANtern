@@ -5,6 +5,7 @@ import {
   DashboardOutlined,
   HistoryOutlined,
   PhoneOutlined,
+  MobileOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   CloudServerOutlined,
@@ -18,6 +19,7 @@ const navItems = [
   { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
   { key: '/core-network', icon: <CloudServerOutlined />, label: 'Core Network' },
   { key: '/dialer', icon: <PhoneOutlined />, label: 'Dialer' },
+  { key: '/phone', icon: <MobileOutlined />, label: 'Phone' },
   { key: '/history', icon: <HistoryOutlined />, label: 'History' },
   { key: '/docs', icon: <BookOutlined />, label: 'Docs' },
 ];

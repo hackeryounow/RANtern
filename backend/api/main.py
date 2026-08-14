@@ -19,7 +19,7 @@ if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
 from api.ws import ws_hub
-from api.routes import provision, test, config, profiles, core_network, topology, docker_images, components, docs
+from api.routes import provision, test, config, profiles, core_network, topology, docker_images, components, docs, phone
 
 
 @asynccontextmanager
@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
         close_pool()
     except Exception:
         pass
+    # Shutdown: detach simulated phone (deregister + close tunnels)
+    try:
+        from coresimrunner.phone_sim.manager import PhoneSessionManager
+        PhoneSessionManager.get_instance().shutdown()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -96,6 +102,7 @@ app.include_router(topology.router, prefix="/api", tags=["Topology"])
 app.include_router(docker_images.router, prefix="/api", tags=["Docker Images"])
 app.include_router(components.router, prefix="/api", tags=["NF Components"])
 app.include_router(docs.router, prefix="/api", tags=["Docs"])
+app.include_router(phone.router, prefix="/api", tags=["Phone"])
 
 
 @app.get("/api/health")

@@ -16,15 +16,14 @@ import { Dnd } from '@antv/x6-plugin-dnd';
 import { Selection } from '@antv/x6-plugin-selection';
 import { Snapline } from '@antv/x6-plugin-snapline';
 import { Keyboard } from '@antv/x6-plugin-keyboard';
-import { Button, Dropdown, Input, Select, Space, Tooltip, Typography, message, Modal, notification } from 'antd';
+import { Button, Input, Select, Space, Tooltip, Typography, message, Modal, notification } from 'antd';
 import {
   SaveOutlined, CaretRightOutlined, StopOutlined, ReloadOutlined,
   FolderOpenOutlined, ClearOutlined, AppstoreOutlined,
-  BlockOutlined, FileTextOutlined, TableOutlined,
+  FileTextOutlined, TableOutlined,
   ExpandOutlined, TagOutlined, ApartmentOutlined, PlusOutlined,
-  ZoomInOutlined, ZoomOutOutlined,
   LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  DashboardOutlined, DownOutlined,
+  DashboardOutlined,
 } from '@ant-design/icons';
 import {
   listTopologies, getTopologyDoc, updateTopology, deployTopology, undeployTopology,
@@ -1359,22 +1358,7 @@ export default function TopologyEditor() {
               <span style={{ color: '#b8c4e0' }}>{topoStats.cpu.toFixed(1)}% CPU</span>
             </span>
           </Tooltip>
-          <Dropdown
-            menu={{
-              items: templateVariants.map((v) => ({ key: v.id, label: v.label })),
-              onClick: ({ key }) => {
-                const v = templateVariants.find((x) => x.id === key);
-                handleLoadDefaultTemplate(key, v?.label || key);
-              },
-            }}
-            trigger={['click']}
-          >
-            <Tooltip title="Load 3GPP template">
-              <Button type="text" size="small" icon={<BlockOutlined />} className="topo-tbtn">
-                Template <DownOutlined />
-              </Button>
-            </Tooltip>
-          </Dropdown>
+
           <Tooltip title="Saved topologies & configs">
             <Button type="text" size="small" icon={<FolderOpenOutlined />} onClick={() => setToposOpen(true)} className="topo-tbtn" />
           </Tooltip>
@@ -1401,12 +1385,7 @@ export default function TopologyEditor() {
           <Tooltip title="Inspect nodes/links">
             <Button type="text" size="small" icon={<TableOutlined />} onClick={() => setInspectOpen((v) => !v)} className={`topo-tbtn${inspectOpen ? ' topo-tbtn-active' : ''}`} />
           </Tooltip>
-          <Tooltip title="Zoom out">
-            <Button type="text" size="small" icon={<ZoomOutOutlined />} onClick={handleZoomOut} className="topo-tbtn" />
-          </Tooltip>
-          <Tooltip title="Zoom in">
-            <Button type="text" size="small" icon={<ZoomInOutlined />} onClick={handleZoomIn} className="topo-tbtn" />
-          </Tooltip>
+
           <Tooltip title="Fit to viewport">
             <Button type="text" size="small" icon={<ExpandOutlined />} onClick={handleFitViewport} className="topo-tbtn" />
           </Tooltip>

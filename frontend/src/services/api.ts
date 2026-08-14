@@ -259,4 +259,30 @@ export const getDocsIndex = (lang: string) => api.get('/docs/index', { params: {
 export const getDocContent = (docId: string, lang: string) =>
   api.get(`/docs/${docId}`, { params: { lang }, responseType: 'text' as any });
 
+// ─── Phone simulator ───
+export interface PhoneSimConfig {
+  imsi?: string;
+  ki?: string;
+  opc?: string;
+  msisdn?: string;
+  mcc?: string;
+  mnc?: string;
+  core_address?: string;
+  pcscf_address?: string;
+  upf_address?: string;
+  gnb_address?: string;
+  sip_password?: string;
+}
+export const getPhoneState = () => api.get('/phone/state');
+export const getPhoneDefaults = () => api.get('/phone/defaults');
+export const setPhoneAirplane = (enabled: boolean, sim?: PhoneSimConfig) =>
+  api.post('/phone/airplane', { enabled, sim });
+export const phoneDial = (callee: string) => api.post('/phone/dial', { callee });
+export const phoneHangup = () => api.post('/phone/hangup');
+export const phoneAnswer = () => api.post('/phone/answer');
+export const phoneReject = () => api.post('/phone/reject');
+export const phonePing = (target?: string) => api.post('/phone/ping', { target });
+export const phoneTraffic = (burst = 20, target = '8.8.8.8', port = 33434) =>
+  api.post('/phone/traffic', { burst, target, port });
+
 export default api;

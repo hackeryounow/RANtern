@@ -4,6 +4,8 @@
   { "id": "nf-functions", "title": "3GPP NF Functions", "file": "nf-functions.md" },
   { "id": "nf-components", "title": "NF Components", "file": "nf-components.md" },
   { "id": "procedures", "title": "Core Network Procedures", "file": "procedures.md" },
+  { "id": "ue-network-access", "title": "UE Network Access", "file": "ue-network-access.md" },
+  { "id": "ulcl-configuration", "title": "ULCL Configuration", "file": "ulcl-configuration.md" },
   { "id": "topology-editor", "title": "Topology Editor", "file": "topology-editor.md" },
   { "id": "deployment", "title": "Deployment & Configuration", "file": "deployment.md" },
   { "id": "faq", "title": "FAQ", "file": "faq.md" }

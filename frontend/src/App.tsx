@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import History from './pages/History';
 import Dialer from './pages/Dialer';
+import Phone from './pages/Phone';
 import CoreNetwork from './pages/CoreNetwork';
 import Docs from './pages/Docs';
 
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/history" element={<History />} />
           <Route path="/dialer" element={<Dialer />} />
+          <Route path="/phone" element={<Phone />} />
           <Route path="/core-network" element={<CoreNetwork />} />
           <Route path="/docs" element={<Docs />} />
           {/* Legacy redirects */}
