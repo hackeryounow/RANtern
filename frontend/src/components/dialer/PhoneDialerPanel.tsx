@@ -1,20 +1,21 @@
 /**
- * Phone — simulated phone page.
+ * PhoneDialerPanel — the simulated 5G phone (NGAP/NAS attach, GTP-U,
+ * IMS VoNR dialing). Embedded by the unified Dialer page (Phone mode).
  *
- * Left: the device (PhoneFrame) + an icon rail (airplane toggle and round
- * buttons that open the right-side panels, like the airplane toggle).
- * Right: SIM settings / PDU sessions / connectivity probe panels.
+ * Left: the device (PhoneFrame) + an icon rail: airplane toggle on top,
+ * then a grouped pill of panel-openers (SIM / PDU / Ping / Traffic).
+ * Right: the panel opened from the rail.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { message } from 'antd';
 import { AimOutlined, IdcardOutlined, LineChartOutlined, SwapOutlined } from '@ant-design/icons';
-import { usePhone } from '../hooks/usePhone';
-import type { PhoneTrafficCounters } from '../hooks/usePhone';
-import { getTopologyStatus, listTopologies } from '../services/api';
-import type { PhoneSimConfig } from '../services/api';
-import PhoneFrame from '../components/phone/PhoneFrame';
-import SimPanel from '../components/phone/SimPanel';
+import { usePhone } from '../../hooks/usePhone';
+import type { PhoneTrafficCounters } from '../../hooks/usePhone';
+import { getTopologyStatus, listTopologies } from '../../services/api';
+import type { PhoneSimConfig } from '../../services/api';
+import PhoneFrame from '../phone/PhoneFrame';
+import SimPanel from '../phone/SimPanel';
 
 const cardStyle: React.CSSProperties = {
   background: '#111827',
@@ -35,36 +36,49 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-/** Round icon button with a label below — same look as the airplane toggle. */
+/**
+ * Round icon button with a label below. Active buttons get a colored ring,
+ * tinted fill and a glowing dot; hover lifts the button slightly.
+ */
 function RailButton(props: {
   active: boolean; color?: string; label: string; title?: string;
   disabled?: boolean; onClick: () => void; children: React.ReactNode;
 }) {
   const { active, color = '#00d4ff', label, title, disabled, onClick, children } = props;
+  const [hover, setHover] = useState(false);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
       <button
         onClick={onClick}
         disabled={disabled}
         title={title}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
         style={{
           width: 46, height: 46, borderRadius: '50%',
           cursor: disabled ? 'default' : 'pointer',
-          border: `1px solid ${active ? color : '#334155'}`,
-          background: active ? color + '26' : '#111827',
-          color: active ? color : '#94a3b8',
+          border: `1px solid ${active ? color : hover ? '#475569' : '#334155'}`,
+          background: active
+            ? `radial-gradient(circle at 32% 28%, ${color}33 0%, ${color}14 70%)`
+            : hover ? '#1a2332' : '#111827',
+          color: active ? color : hover ? '#cbd5e1' : '#94a3b8',
           fontSize: 17,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: active ? `0 0 14px ${color}40` : hover ? '0 4px 10px rgba(0,0,0,0.3)' : 'none',
+          transform: hover && !disabled ? 'translateY(-2px)' : 'none',
+          transition: 'all 0.18s ease',
         }}
       >
         {children}
       </button>
-      <span style={{ color: '#64748b', fontSize: 10, textAlign: 'center', width: 74 }}>{label}</span>
+      <span style={{ color: active ? color : '#64748b', fontSize: 10, fontWeight: active ? 600 : 400, textAlign: 'center', width: 74, transition: 'color 0.18s ease' }}>
+        {label}
+      </span>
     </div>
   );
 }
 
-export default function Phone() {
+export default function PhoneDialerPanel() {
   const { state, defaults, busy, txActive, rxActive, toggleAirplane, dial, hangup, answer, reject, ping, sendTraffic } = usePhone();
 
   const [sim, setSim] = useState<PhoneSimConfig>({});
@@ -189,11 +203,6 @@ export default function Phone() {
 
   return (
     <div>
-      <h2 style={{ color: '#f0f4ff', fontSize: 18, marginBottom: 4 }}>Phone Simulator</h2>
-      <div style={{ color: '#64748b', fontSize: 12, marginBottom: 18 }}>
-        Real 5G attach (NGAP/NAS) · GTP-U user plane to UPF · IMS SIP REGISTER (AKAv1-MD5) · simulated voice
-      </div>
-
       {/* Core-network status banner: tells the user where to start the core */}
       <div
         style={{
@@ -237,8 +246,16 @@ export default function Phone() {
         <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
           <PhoneFrame state={state} txActive={txActive} rxActive={rxActive} onDial={dial} onHangup={hangup} onAnswer={answer} onReject={reject} />
 
-          {/* icon rail: airplane toggle + panel openers */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
+          {/* icon rail: airplane toggle, divider, grouped panel openers */}
+          <div
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: 16, marginTop: 12, padding: '16px 10px',
+              background: 'linear-gradient(160deg, rgba(20, 27, 45, 0.85) 0%, rgba(13, 17, 23, 0.7) 100%)',
+              border: '1px solid #1e293b', borderRadius: 28,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+            }}
+          >
             <RailButton
               active={state.airplane}
               color="#f59e0b"
@@ -249,6 +266,9 @@ export default function Phone() {
             >
               ✈
             </RailButton>
+
+            <div style={{ width: 34, height: 1, background: 'linear-gradient(90deg, transparent, #334155, transparent)' }} />
+
             <RailButton
               active={openPanel === 'sim'}
               label="SIM"
