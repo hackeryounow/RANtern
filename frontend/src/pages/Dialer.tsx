@@ -35,7 +35,7 @@ export default function Dialer() {
         }}
       >
         <div>
-          <h2 style={{ color: '#f0f4ff', fontSize: 18, marginBottom: 4 }}>Dialer</h2>
+          <h2 className="fx-page-title" style={{ fontSize: 18, marginBottom: 4, paddingBottom: 8 }}>Dialer</h2>
           <div style={{ color: '#64748b', fontSize: 12 }}>
             {mode === 'sip'
               ? 'Browser SIP softphone — WebSocket registration to Asterisk PBX, live RTP audio'

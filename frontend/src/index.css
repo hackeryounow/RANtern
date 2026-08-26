@@ -510,6 +510,50 @@ select.input{
   background: rgba(0, 212, 255, 0.08) !important;
 }
 
+/* ── Topology floating view controls (bottom-right of canvas) ── */
+.topo-fab {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: rgba(13, 17, 23, 0.88);
+  border: 1px solid #1e3a5f;
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.topo-fab-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #b8c4e0;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.topo-fab-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f0f4ff;
+}
+.topo-fab-btn.active {
+  color: #00d4ff;
+  background: rgba(0, 212, 255, 0.1);
+}
+.topo-fab-sep {
+  height: 1px;
+  margin: 2px 5px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* ── YAML modal editor ── */
 .yaml-modal-editor {
   width: 100%;
@@ -567,11 +611,17 @@ select.input{
    visible height comes from antd's inner .ant-upload-btn padding, so shrink
    it here to keep the zone slim. */
 .compact-dragger.ant-upload-drag {
-  max-height: 64px !important;
+  max-height: 40px !important;
   flex: none !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center;
+}
+.compact-dragger.ant-upload-drag .ant-upload {
+  padding: 0 !important;
 }
 .compact-dragger.ant-upload-drag .ant-upload-btn {
-  padding: 12px 0 !important;
+  padding: 8px 0 !important;
   min-height: unset !important;
 }
 
@@ -676,3 +726,298 @@ select.input{
   border-top: 1px solid #1e3a5f;
   margin: 24px 0;
 }
+
+/* ============================================================
+   GLOBAL VISUAL FX — ambient background, glass surfaces,
+   glows and motion shared by every page
+   ============================================================ */
+
+::selection { background: rgba(0, 212, 255, 0.28); color: #f0f4ff; }
+
+/* ── Ambient background: aurora glows + faint ops-room grid ── */
+.fx-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 480px at 12% -8%, rgba(0, 212, 255, 0.07), transparent 60%),
+    radial-gradient(820px 520px at 105% 18%, rgba(99, 102, 241, 0.09), transparent 60%),
+    radial-gradient(700px 460px at 68% 115%, rgba(168, 85, 247, 0.05), transparent 60%);
+}
+.fx-ambient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(94, 148, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 148, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 95% 75% at 50% 18%, black 25%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 95% 75% at 50% 18%, black 25%, transparent 78%);
+}
+.fx-ambient::after {
+  content: '';
+  position: absolute;
+  top: -200px;
+  left: 28%;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.055), transparent 65%);
+  animation: fx-drift 18s ease-in-out infinite alternate;
+}
+@keyframes fx-drift {
+  from { transform: translateX(-140px); }
+  to   { transform: translateX(220px); }
+}
+
+/* ── Page transition: fade + rise on every route change ── */
+@keyframes fx-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fx-rise 0.35s ease both; }
+
+/* ── Unified page title: gradient text + glowing underline ── */
+.fx-page-title {
+  position: relative;
+  display: inline-block;
+  margin: 0 0 22px;
+  padding-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1.3;
+  background: linear-gradient(90deg, #7dd3fc 0%, #00d4ff 38%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.18));
+}
+.fx-page-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #00d4ff, #6366f1 62%, transparent);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.45);
+}
+/* Icons inside gradient-clipped titles keep a solid accent fill (they would
+   otherwise inherit the transparent text color and vanish). */
+.fx-page-title .anticon {
+  color: #00d4ff;
+  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.35));
+  vertical-align: -0.12em;
+}
+
+/* ── Glass cards: every antd Card gets depth + hover glow ── */
+.ant-card {
+  background: linear-gradient(180deg, rgba(24, 32, 52, 0.9) 0%, rgba(15, 21, 36, 0.94) 100%) !important;
+  border: 1px solid rgba(46, 68, 106, 0.55) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.ant-card:hover {
+  border-color: rgba(0, 212, 255, 0.32) !important;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.38), 0 0 20px rgba(0, 212, 255, 0.06);
+}
+/* modal-embedded cards stay flat (see .ant-modal rules above) */
+.ant-modal .ant-card,
+.ant-modal .ant-card:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ── Buttons: primary glow + default hover accent ── */
+.ant-btn { transition: all 0.2s ease; }
+.ant-btn-primary:not(:disabled) {
+  box-shadow: 0 2px 14px rgba(0, 212, 255, 0.32);
+}
+.ant-btn-primary:not(:disabled):hover {
+  box-shadow: 0 4px 20px rgba(0, 212, 255, 0.5);
+  transform: translateY(-1px);
+}
+.ant-btn-default:not(:disabled):hover {
+  border-color: rgba(0, 212, 255, 0.45);
+  color: #7dd3fc;
+}
+
+/* ── Segmented: glass track + glowing selected thumb ── */
+.ant-segmented {
+  background: rgba(13, 20, 35, 0.85) !important;
+  border: 1px solid #1e293b;
+}
+.ant-segmented-item-selected {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.16), rgba(99, 102, 241, 0.2)) !important;
+  color: #7dd3fc !important;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.22) !important;
+}
+
+/* ── Sidebar menu: rounded items, gradient selection ── */
+.ant-menu-dark .ant-menu-item {
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+.ant-menu-dark .ant-menu-item:hover:not(.ant-menu-item-selected) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+.ant-menu-dark .ant-menu-item-selected {
+  background: linear-gradient(90deg, rgba(0, 212, 255, 0.16), rgba(99, 102, 241, 0.07)) !important;
+  box-shadow: inset 2px 0 0 #00d4ff, 0 0 14px rgba(0, 212, 255, 0.1);
+}
+.fx-logo {
+  filter: drop-shadow(0 0 7px rgba(0, 212, 255, 0.45));
+}
+
+/* ── Tabs: glowing ink bar ── */
+.ant-tabs-ink-bar {
+  background: #00d4ff !important;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.75);
+}
+
+/* ── Tables: soft header + accent row hover ── */
+.ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+.ant-table-tbody > tr:hover > td {
+  background: rgba(0, 212, 255, 0.045) !important;
+}
+
+/* ── Tooltip / message: dark glass ── */
+.ant-tooltip-inner {
+  background: rgba(13, 17, 23, 0.96) !important;
+  border: 1px solid #1e3a5f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+.ant-message-notice-content {
+  background: rgba(17, 24, 39, 0.96) !important;
+  border: 1px solid #1e3a5f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Inputs: focus glow already themed; soften borders ── */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+.ant-input:focus,
+.ant-input-affix-wrapper-focused,
+.ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.12) !important;
+}
+
+/* ── Status dots: reusable pulsing indicator ── */
+.fx-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* ============================================================
+   TECH POLISH PASS — HUD hairlines, scanline sweep, gradient
+   primary buttons, glowing sidebar edge (2026-08 restyle)
+   ============================================================ */
+
+/* ── Slow scanline sweep over the ambient layer (very subtle) ── */
+.fx-ambient .fx-scanline,
+.fx-scanline {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 120px;
+  top: -140px;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(0, 212, 255, 0.045), transparent);
+  animation: fx-scan 11s linear infinite;
+}
+@keyframes fx-scan {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(118vh); }
+}
+
+/* ── Cards: HUD hairline across the top edge ── */
+.ant-card {
+  position: relative;
+  overflow: hidden;
+}
+.ant-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.5), transparent);
+  pointer-events: none;
+}
+/* modal-embedded cards stay flat (matches the .ant-modal rule above) */
+.ant-modal .ant-card::before {
+  display: none;
+}
+
+/* ── Primary buttons: cyan→indigo gradient + brighter hover ── */
+.ant-btn-primary:not(:disabled) {
+  background: linear-gradient(135deg, #00c6f0 0%, #4f6ef7 100%) !important;
+  border-color: transparent !important;
+}
+.ant-btn-primary:not(:disabled):hover {
+  background: linear-gradient(135deg, #22d3f5 0%, #6b83ff 100%) !important;
+}
+
+/* ── Sidebar: gradient edge line on the right border ── */
+.ant-layout-sider {
+  background: linear-gradient(180deg, rgba(13, 17, 23, 0.96) 0%, rgba(10, 14, 23, 0.92) 100%) !important;
+}
+.ant-layout-sider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.4), rgba(99, 102, 241, 0.18) 55%, transparent);
+  pointer-events: none;
+}
+
+/* ── Menu icons glow softly on the selected item ── */
+.ant-menu-dark .ant-menu-item-selected .anticon {
+  filter: drop-shadow(0 0 5px rgba(0, 212, 255, 0.55));
+}
+
+/* ── Inputs: slightly darker glass + mono values feel ── */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-password {
+  border-radius: 8px;
+}
+
+/* ── Drawers match the card treatment ── */
+.ant-drawer-content {
+  background: #0d1117 !important;
+}
+.ant-drawer-header {
+  background: linear-gradient(180deg, rgba(24, 32, 52, 0.9), rgba(15, 21, 36, 0.94)) !important;
+}
+.ant-drawer-title {
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, #7dd3fc, #00d4ff 60%, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+

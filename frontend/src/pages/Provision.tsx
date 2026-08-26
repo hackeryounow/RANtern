@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Modal, message } from 'antd';
+import { UserAddOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { startProvision, getProvisionStatus, listProfiles } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -29,29 +31,46 @@ export default function Provision() {
   }, []);
   useWebSocket(onWS);
 
-  const handleStart = async () => {
+  const doStart = async () => {
     setLog([]);
     try {
       const res = await startProvision({ count, core_network: coreNetwork, action, profile });
       setLog([`Task ${res.data.task_id} started`]);
     } catch (e: any) {
       setLog([`Error: ${e.message}`]);
+      message.error(e.response?.data?.error || e.message || 'Failed to start task');
     }
+  };
+
+  const handleStart = () => {
+    if (action === 'delete') {
+      Modal.confirm({
+        title: 'Delete subscriptions?',
+        icon: <ExclamationCircleOutlined />,
+        content: `This removes ${count} subscription${count > 1 ? 's' : ''} from the "${coreNetwork}" core (profile: ${profile || 'active'}).`,
+        okText: 'Delete',
+        okButtonProps: { danger: true },
+        cancelText: 'Cancel',
+        onOk: doStart,
+      });
+      return;
+    }
+    doStart();
   };
 
   const progressPct = status.total > 0 ? Math.round((status.progress / status.total) * 100) : 0;
 
   return (
     <div>
-      <h1 style={{ color: 'var(--accent)', fontSize: '24px', marginBottom: '24px', fontFamily: 'var(--font-mono)' }}>
-        ⬡ Provision
+      <h1 className="fx-page-title">
+        <UserAddOutlined /> Provision
       </h1>
 
       <div className="panel" style={{ maxWidth: '600px', marginBottom: '20px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
           <div>
             <label style={{ color: 'var(--text-muted)', fontSize: '11px' }}>COUNT</label>
-            <input className="input" type="number" value={count} onChange={e => setCount(+e.target.value)} style={{ width: '100%' }} />
+            <input className="input" type="number" min={1} value={count} onChange={e => setCount(Math.max(1, +e.target.value || 1))} style={{ width: '100%' }} />
           </div>
           <div>
             <label style={{ color: 'var(--text-muted)', fontSize: '11px' }}>CORE NETWORK</label>

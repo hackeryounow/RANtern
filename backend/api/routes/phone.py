@@ -1,18 +1,37 @@
 """
-Phone simulator API routes — REST control surface for the simulated phone.
+Phone simulator API routes — REST control surface for simulated phones.
 
-State/progress events are pushed over the existing WebSocket hub:
+Each browser tab owns one phone instance, identified by a client-generated
+phone id (kept in sessionStorage, so a reload re-attaches to the same
+phone). Phones live in PhoneRegistry; every WebSocket event carries the
+phone_id it belongs to:
   phone_state / phone_attach / phone_sip / phone_call / phone_traffic
 """
 
+import re
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from loguru import logger
 
-from coresimrunner.phone_sim.manager import PhoneSessionManager
+from coresimrunner.phone_sim.manager import PhoneRegistry, PhoneSessionManager
 
 router = APIRouter()
+
+_PHONE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _validate(phone_id: str):
+    if not _PHONE_ID_RE.match(phone_id):
+        raise HTTPException(status_code=400, detail="invalid phone id")
+
+
+def _get(phone_id: str) -> PhoneSessionManager:
+    _validate(phone_id)
+    mgr = PhoneRegistry.get(phone_id)
+    if mgr is None:
+        raise HTTPException(status_code=404, detail="unknown phone id — acquire first")
+    return mgr
 
 
 class SimConfig(BaseModel):
@@ -53,30 +72,55 @@ class TrafficRequest(BaseModel):
     port: Optional[int] = 33434
 
 
-@router.get("/phone/state")
-async def phone_state():
+@router.get("/phones")
+async def phones_list():
+    """List all live simulated phones (one line each)."""
+    return {"phones": [mgr.brief() for mgr in PhoneRegistry.all()]}
+
+
+@router.post("/phones/{phone_id}/acquire")
+async def phone_acquire(phone_id: str):
+    """Create (or re-acquire after reload) this tab's phone instance."""
+    _validate(phone_id)
+    mgr = PhoneRegistry.acquire(phone_id)
+    return {
+        "phone_id": phone_id,
+        "defaults": mgr.defaults(),
+        "state": mgr.get_state(),
+    }
+
+
+@router.delete("/phones/{phone_id}")
+async def phone_release(phone_id: str):
+    """Detach and remove the phone from the registry."""
+    _validate(phone_id)
+    return {"phone_id": phone_id, "released": PhoneRegistry.release(phone_id)}
+
+
+@router.get("/phones/{phone_id}/state")
+async def phone_state(phone_id: str):
     """Full phone state snapshot (airplane, phase, sessions, SIP, call, traffic)."""
-    return PhoneSessionManager.get_instance().get_state()
+    return _get(phone_id).get_state()
 
 
-@router.get("/phone/defaults")
-async def phone_defaults():
-    """SIM panel prefills derived from the active profile."""
-    return PhoneSessionManager.get_instance().defaults()
+@router.get("/phones/{phone_id}/defaults")
+async def phone_defaults(phone_id: str):
+    """SIM panel prefills derived from the active profile (+ slot offset)."""
+    return _get(phone_id).defaults()
 
 
-@router.post("/phone/airplane")
-async def phone_airplane(req: AirplaneRequest):
+@router.post("/phones/{phone_id}/airplane")
+async def phone_airplane(phone_id: str, req: AirplaneRequest):
     """Toggle airplane mode. OFF starts attach with the provided SIM config."""
-    mgr = PhoneSessionManager.get_instance()
+    mgr = _get(phone_id)
     sim = req.sim.model_dump() if req.sim else None
     return mgr.set_airplane(req.enabled, sim)
 
 
-@router.post("/phone/dial")
-async def phone_dial(req: DialRequest):
+@router.post("/phones/{phone_id}/dial")
+async def phone_dial(phone_id: str, req: DialRequest):
     """Place an IMS call (INVITE via P-CSCF over the GTP-U tunnel)."""
-    mgr = PhoneSessionManager.get_instance()
+    mgr = _get(phone_id)
     if not req.callee.strip():
         raise HTTPException(status_code=400, detail="callee is required")
     try:
@@ -85,50 +129,50 @@ async def phone_dial(req: DialRequest):
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.post("/phone/hangup")
-async def phone_hangup():
+@router.post("/phones/{phone_id}/hangup")
+async def phone_hangup(phone_id: str):
     """Hang up the active call (CANCEL or BYE)."""
-    return PhoneSessionManager.get_instance().hangup()
+    return _get(phone_id).hangup()
 
 
-@router.post("/phone/answer")
-async def phone_answer():
+@router.post("/phones/{phone_id}/answer")
+async def phone_answer(phone_id: str):
     """Pick up a ringing incoming call (sends the held 200 OK)."""
-    mgr = PhoneSessionManager.get_instance()
+    mgr = _get(phone_id)
     try:
         return mgr.answer()
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.post("/phone/reject")
-async def phone_reject():
+@router.post("/phones/{phone_id}/reject")
+async def phone_reject(phone_id: str):
     """Decline a ringing incoming call (486 Busy Here)."""
-    mgr = PhoneSessionManager.get_instance()
+    mgr = _get(phone_id)
     try:
         return mgr.reject()
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.post("/phone/auto-answer")
-async def phone_auto_answer(req: AutoAnswerRequest):
+@router.post("/phones/{phone_id}/auto-answer")
+async def phone_auto_answer(phone_id: str, req: AutoAnswerRequest):
     """Toggle headless auto-answer for incoming calls (interval tests)."""
-    return PhoneSessionManager.get_instance().set_auto_answer(req.enabled)
+    return _get(phone_id).set_auto_answer(req.enabled)
 
 
-@router.post("/phone/ping")
-def phone_ping(req: PingRequest):
+@router.post("/phones/{phone_id}/ping")
+def phone_ping(phone_id: str, req: PingRequest):
     """ICMP echo through the internet GTP-U tunnel (connectivity probe).
     Sync def: the (up to 3s) reply wait runs in FastAPI's threadpool."""
-    logger.info(f"[phone] ping request target={req.target}")
-    return PhoneSessionManager.get_instance().ping(req.target or "8.8.8.8")
+    logger.info(f"[phone {phone_id}] ping request target={req.target}")
+    return _get(phone_id).ping(req.target or "8.8.8.8")
 
 
-@router.post("/phone/traffic")
-async def phone_traffic(req: TrafficRequest):
+@router.post("/phones/{phone_id}/traffic")
+async def phone_traffic(phone_id: str, req: TrafficRequest):
     """Send an uplink UDP burst through the internet GTP-U tunnel.
     Live UL/DL counters stream over the phone_traffic WebSocket event."""
-    return PhoneSessionManager.get_instance().send_traffic(
+    return _get(phone_id).send_traffic(
         burst=req.burst or 20, target=req.target or "8.8.8.8",
         port=req.port or 33434)

@@ -1,13 +1,15 @@
 /**
- * usePhone — REST + WebSocket wiring for the simulated phone page.
+ * usePhone — REST + WebSocket wiring for one simulated phone.
  *
- * State/progress arrives over the shared /ws hub as events:
+ * Each browser tab owns a single phone instance (client-generated id kept
+ * in sessionStorage). State/progress arrives over the shared /ws hub as
+ * events carrying phone_id, so only events for our own phone are applied:
  *   phone_state, phone_attach, phone_sip, phone_call, phone_traffic
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  acquirePhone,
   getPhoneState,
-  getPhoneDefaults,
   setPhoneAirplane,
   phoneDial,
   phoneHangup,
@@ -75,20 +77,30 @@ const EMPTY_STATE: PhoneState = {
   traffic: {},
 };
 
-export function usePhone() {
+export function usePhone(phoneId: string) {
   const [state, setState] = useState<PhoneState>(EMPTY_STATE);
   const [defaults, setDefaults] = useState<PhoneDefaults>({});
   const [busy, setBusy] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Initial snapshot + SIM prefills
+  // Acquire this tab's phone on the backend (idempotent), then seed the
+  // state snapshot + SIM prefills from the acquire response.
   useEffect(() => {
-    getPhoneState().then(r => setState({ ...EMPTY_STATE, ...r.data })).catch(() => {});
-    getPhoneDefaults().then(r => setDefaults(r.data)).catch(() => {});
-  }, []);
+    let stop = false;
+    acquirePhone(phoneId)
+      .then(r => {
+        if (stop) return;
+        setDefaults(r.data?.defaults || {});
+        setState({ ...EMPTY_STATE, ...(r.data?.state || {}) });
+      })
+      .catch(() => {});
+    return () => { stop = true; };
+  }, [phoneId]);
 
   const onWs = useCallback((type: string, data: any) => {
+    // Events from other tabs' phones are ignored
+    if (!data || data.phone_id !== phoneId) return;
     if (type === 'phone_state') {
       setState(prev => ({ ...prev, ...data }));
     } else if (type === 'phone_attach') {
@@ -123,54 +135,54 @@ export function usePhone() {
     } else if (type === 'phone_traffic') {
       setState(prev => ({ ...prev, traffic: data.traffic ?? prev.traffic }));
     }
-  }, []);
+  }, [phoneId]);
 
   useWebSocket(onWs);
 
   const toggleAirplane = useCallback(async (enabled: boolean, sim?: PhoneSimConfig) => {
     setBusy(true);
     try {
-      const r = await setPhoneAirplane(enabled, sim);
+      const r = await setPhoneAirplane(phoneId, enabled, sim);
       setState(prev => ({ ...prev, ...r.data }));
       return r.data;
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [phoneId]);
 
   const dial = useCallback(async (callee: string) => {
-    const r = await phoneDial(callee);
+    const r = await phoneDial(phoneId, callee);
     setState(prev => ({ ...prev, ...r.data }));
-  }, []);
+  }, [phoneId]);
 
   const hangup = useCallback(async () => {
-    const r = await phoneHangup();
+    const r = await phoneHangup(phoneId);
     setState(prev => ({ ...prev, ...r.data }));
-  }, []);
+  }, [phoneId]);
 
   const answer = useCallback(async () => {
-    const r = await phoneAnswer();
+    const r = await phoneAnswer(phoneId);
     setState(prev => ({ ...prev, ...r.data }));
-  }, []);
+  }, [phoneId]);
 
   const reject = useCallback(async () => {
-    const r = await phoneReject();
+    const r = await phoneReject(phoneId);
     setState(prev => ({ ...prev, ...r.data }));
-  }, []);
+  }, [phoneId]);
 
   const ping = useCallback(async (target?: string) => {
-    const r = await phonePing(target);
+    const r = await phonePing(phoneId, target);
     return r.data as { ok: boolean; rtt_ms: number | null; error?: string | null };
-  }, []);
+  }, [phoneId]);
 
   const sendTraffic = useCallback(async (burst?: number, target?: string) => {
-    const r = await phoneTraffic(burst, target);
+    const r = await phoneTraffic(phoneId, burst, target);
     setState(prev => ({
       ...prev,
       traffic: r.data?.traffic ?? prev.traffic,
     }));
     return r.data as { ok: boolean; sent: number; error?: string };
-  }, []);
+  }, [phoneId]);
 
   // Arrow activity: show up/down arrows when traffic happened recently
   const now = Date.now() / 1000;
@@ -191,6 +203,6 @@ export function usePhone() {
     reject,
     ping,
     sendTraffic,
-    refresh: () => getPhoneState().then(r => setState({ ...EMPTY_STATE, ...r.data })).catch(() => {}),
+    refresh: () => getPhoneState(phoneId).then(r => setState({ ...EMPTY_STATE, ...r.data })).catch(() => {}),
   };
 }

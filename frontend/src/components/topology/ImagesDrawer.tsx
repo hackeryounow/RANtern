@@ -12,11 +12,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Drawer, Upload, Button, Input, Space, Typography, List, Tag, message, Divider, Empty,
+  Drawer, Upload, Button, Input, Space, Typography, List, Tag, message, Empty,
 } from 'antd';
 import {
   CloudDownloadOutlined, LoginOutlined, ReloadOutlined,
-  KeyOutlined,
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import {
@@ -191,45 +190,89 @@ export default function ImagesDrawer({ open, onClose }: ImagesDrawerProps) {
       width={520}
       open={open}
       onClose={onClose}
-      styles={{ body: { background: '#0d1117', padding: 16 }, header: { background: '#111827', borderBottom: '1px solid #1e3a5f' } }}
+      styles={{ body: { background: '#0d1117', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }, header: { background: '#111827', borderBottom: '1px solid #1e3a5f' } }}
     >
-      {/* ── Upload (drag then load) ── */}
-      <Upload.Dragger
-        {...uploadProps}
-        disabled={uploading}
-        className="compact-dragger"
-        style={{ background: '#111827', borderColor: pendingFile ? '#00d4ff' : '#1e3a5f' }}
-      >
-        <p style={{ margin: 0, color: pendingFile ? '#00d4ff' : '#7a8db0', fontSize: 12 }}>
-          {pendingFile ? pendingFile.name : 'Drag .tar / .tar.gz image here'}
-        </p>
-      </Upload.Dragger>
-      {pendingFile && (
-        <Button
-          type="primary"
-          size="small"
-          loading={uploading}
-          onClick={handleDockerLoad}
-          style={{ marginTop: 6, width: '100%', background: 'linear-gradient(135deg, #00d4ff, #6366f1)', border: 'none', fontSize: 12 }}
-        >
-          {uploading ? 'Loading…' : `docker load ${pendingFile.name}`}
-        </Button>
-      )}
+      {/* ── 01 · Online pull (primary mode) ── */}
+      <div>
+        <Text style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>01 · ONLINE PULL</Text>
+        <Space.Compact style={{ width: '100%', marginTop: 6 }}>
+          <Input
+            size="small"
+            placeholder="e.g. nginx:latest or registry/repo:tag"
+            value={pullRef}
+            onChange={(e) => setPullRef(e.target.value)}
+            onPressEnter={handlePull}
+            disabled={pulling}
+            style={{ background: '#1a2035', borderColor: '#1e3a5f', fontFamily: mono }}
+          />
+          <Button
+            size="small"
+            type="primary"
+            icon={<CloudDownloadOutlined />}
+            onClick={handlePull}
+            loading={pulling}
+            style={{ background: 'linear-gradient(135deg, #00d4ff, #6366f1)', border: 'none' }}
+          >
+            Pull
+          </Button>
+        </Space.Compact>
+        {(pullLines.length > 0 || pulling) && (
+          <div
+            ref={pullBoxRef}
+            style={{
+              marginTop: 6, height: 96, overflowY: 'auto', background: '#0a0e17',
+              border: '1px solid #1e3a5f', borderRadius: 6, padding: '6px 8px',
+              fontFamily: mono, fontSize: 11, color: '#8a9bb8', whiteSpace: 'pre-wrap',
+            }}
+          >
+            {pullLines.map((l, i) => (
+              <div key={i} style={{ color: l.startsWith('✓') ? '#52c41a' : l.startsWith('✗') ? '#ff4d4f' : '#8a9bb8' }}>
+                {l}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      <Divider style={{ borderColor: '#1e3a5f', margin: '14px 0' }} />
+      {/* ── 02 · Load from file (slim drop zone) ── */}
+      <div>
+        <Text style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>02 · LOAD ARCHIVE</Text>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'stretch' }}>
+          <Upload.Dragger
+            {...uploadProps}
+            disabled={uploading}
+            className="compact-dragger"
+            style={{ background: '#111827', borderColor: pendingFile ? '#00d4ff' : '#1e3a5f', flex: 1 }}
+          >
+            <p style={{ margin: 0, color: pendingFile ? '#00d4ff' : '#7a8db0', fontSize: 11.5, lineHeight: '20px' }}>
+              {pendingFile ? pendingFile.name : 'Drop .tar / .tar.gz here or click to browse'}
+            </p>
+          </Upload.Dragger>
+          {pendingFile && (
+            <Button
+              type="primary"
+              size="small"
+              loading={uploading}
+              onClick={handleDockerLoad}
+              style={{ background: 'linear-gradient(135deg, #00d4ff, #6366f1)', border: 'none', fontSize: 12 }}
+            >
+              {uploading ? 'Loading…' : 'Load'}
+            </Button>
+          )}
+        </div>
+      </div>
 
-      {/* ── Registry login ── */}
-      <Text strong style={{ color: '#b8c4e0', fontSize: 12 }}>Registry login</Text>
-      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Input
-          size="small"
-          placeholder="Registry (blank = Docker Hub)"
-          value={registry}
-          onChange={(e) => setRegistry(e.target.value)}
-          prefix={<KeyOutlined style={{ color: '#64748b' }} />}
-          style={{ background: '#1a2035', borderColor: '#1e3a5f' }}
-        />
-        <Space.Compact style={{ width: '100%' }}>
+      {/* ── 03 · Registry login ── */}
+      <div>
+        <Text style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>03 · REGISTRY LOGIN</Text>
+        <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+          <Input
+            size="small"
+            placeholder="Registry (blank = Docker Hub)"
+            value={registry}
+            onChange={(e) => setRegistry(e.target.value)}
+            style={{ background: '#1a2035', borderColor: '#1e3a5f', flex: '0 0 34%' }}
+          />
           <Input
             size="small"
             placeholder="Username"
@@ -239,7 +282,7 @@ export default function ImagesDrawer({ open, onClose }: ImagesDrawerProps) {
           />
           <Input.Password
             size="small"
-            placeholder="Password / token"
+            placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onPressEnter={handleLogin}
@@ -252,92 +295,50 @@ export default function ImagesDrawer({ open, onClose }: ImagesDrawerProps) {
             loading={loggingIn}
             style={{ borderColor: '#1e3a5f', color: '#b8c4e0' }}
           />
-        </Space.Compact>
+        </div>
+        {logins.length > 0 && (
+          <div style={{ marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {logins.map((r) => (
+              <Tag key={r} color="blue" style={{ fontFamily: mono, fontSize: 10 }}>{r}</Tag>
+            ))}
+          </div>
+        )}
       </div>
-      {logins.length > 0 && (
-        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {logins.map((r) => (
-            <Tag key={r} color="blue" style={{ fontFamily: mono, fontSize: 10 }}>{r}</Tag>
-          ))}
-        </div>
-      )}
 
-      <Divider style={{ borderColor: '#1e3a5f', margin: '14px 0' }} />
-
-      {/* ── Pull from registry ── */}
-      <Text strong style={{ color: '#b8c4e0', fontSize: 12 }}>Pull from registry</Text>
-      <Space.Compact style={{ width: '100%', marginTop: 8 }}>
-        <Input
-          size="small"
-          placeholder="e.g. nginx:latest or registry/repo:tag"
-          value={pullRef}
-          onChange={(e) => setPullRef(e.target.value)}
-          onPressEnter={handlePull}
-          disabled={pulling}
-          style={{ background: '#1a2035', borderColor: '#1e3a5f', fontFamily: mono }}
-        />
-        <Button
-          size="small"
-          type="primary"
-          icon={<CloudDownloadOutlined />}
-          onClick={handlePull}
-          loading={pulling}
-          style={{ background: 'linear-gradient(135deg, #00d4ff, #6366f1)', border: 'none' }}
-        >
-          Pull
-        </Button>
-      </Space.Compact>
-      {(pullLines.length > 0 || pulling) && (
-        <div
-          ref={pullBoxRef}
-          style={{
-            marginTop: 8, height: 120, overflowY: 'auto', background: '#0a0e17',
-            border: '1px solid #1e3a5f', borderRadius: 6, padding: 8,
-            fontFamily: mono, fontSize: 11, color: '#8a9bb8', whiteSpace: 'pre-wrap',
-          }}
-        >
-          {pullLines.map((l, i) => (
-            <div key={i} style={{ color: l.startsWith('✓') ? '#52c41a' : l.startsWith('✗') ? '#ff4d4f' : '#8a9bb8' }}>
-              {l}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Divider style={{ borderColor: '#1e3a5f', margin: '14px 0' }} />
-
-      {/* ── Local images ── */}
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Text strong style={{ color: '#b8c4e0', fontSize: 12 }}>Local images ({images.length})</Text>
-        <Button size="small" icon={<ReloadOutlined />} onClick={refreshImages} loading={loadingImages}
-          style={{ borderColor: '#1e3a5f', color: '#8a9bb8' }} />
-      </Space>
-      {images.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<Text type="secondary">No local images</Text>} style={{ marginTop: 16 }} />
-      ) : (
-        <List
-          size="small"
-          loading={loadingImages}
-          dataSource={images}
-          style={{ marginTop: 8, maxHeight: 260, overflowY: 'auto' }}
-          renderItem={(img) => (
-            <List.Item style={{ borderColor: 'rgba(30,58,95,0.5)', padding: '6px 0' }}>
-              <div style={{ width: '100%' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {img.tags && img.tags.length > 0 ? (
-                    img.tags.map((t) => (
-                      <Tag key={t} style={{ fontFamily: mono, fontSize: 11, margin: 0 }}>{t}</Tag>
-                    ))
-                  ) : (
-                    <Tag style={{ fontFamily: mono, fontSize: 11, margin: 0 }}>{img.id?.slice(7, 19) || '<untagged>'}</Tag>
-                  )}
+      {/* ── 04 · Local images (fills the remaining page) ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 140 }}>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Text style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>04 · LOCAL IMAGES ({images.length})</Text>
+          <Button size="small" icon={<ReloadOutlined />} onClick={refreshImages} loading={loadingImages}
+            style={{ borderColor: '#1e3a5f', color: '#8a9bb8' }} />
+        </Space>
+        {images.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<Text type="secondary">No local images</Text>} style={{ marginTop: 12 }} />
+        ) : (
+          <List
+            size="small"
+            loading={loadingImages}
+            dataSource={images}
+            style={{ marginTop: 6, flex: 1, overflowY: 'auto' }}
+            renderItem={(img) => (
+              <List.Item style={{ borderColor: 'rgba(30,58,95,0.5)', padding: '5px 0' }}>
+                <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, minWidth: 0 }}>
+                    {img.tags && img.tags.length > 0 ? (
+                      img.tags.map((t) => (
+                        <Tag key={t} style={{ fontFamily: mono, fontSize: 11, margin: 0 }}>{t}</Tag>
+                      ))
+                    ) : (
+                      <Tag style={{ fontFamily: mono, fontSize: 11, margin: 0 }}>{img.id?.slice(7, 19) || '<untagged>'}</Tag>
+                    )}
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 10, flexShrink: 0 }}>{fmtSize(img.size)}</Text>
                 </div>
-                <Text type="secondary" style={{ fontSize: 10 }}>{fmtSize(img.size)}</Text>
-              </div>
-            </List.Item>
-          )}
-        />
-      )}
+              </List.Item>
+            )}
+          />
+        )}
+      </div>
     </Drawer>
   );
 }

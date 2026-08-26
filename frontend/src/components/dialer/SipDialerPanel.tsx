@@ -143,6 +143,44 @@ export default function SipDialerPanel() {
   const config = sip.sipConfig;
   const setConfig = sip.setSipConfig;
 
+  // ── Environment readiness probe ──
+  // Periodically opens a throwaway WebSocket to the configured SIP endpoint.
+  // A successful handshake means the PBX / WS proxy is up (green lamp); a
+  // connection failure turns the lamp red so users know to fix the stack
+  // before registering.
+  const [envState, setEnvState] = useState<'checking' | 'ready' | 'down'>('checking');
+  useEffect(() => {
+    let stop = false;
+    let probeWs: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const probe = () => {
+      if (stop) return;
+      setEnvState('checking');
+      try {
+        probeWs = new WebSocket(config.websocketUrl);
+        const settle = (ok: boolean) => {
+          if (timer) { clearTimeout(timer); timer = null; }
+          try { probeWs?.close(); } catch { /* noop */ }
+          probeWs = null;
+          if (!stop) setEnvState(ok ? 'ready' : 'down');
+        };
+        timer = setTimeout(() => settle(false), 3500);
+        probeWs.onopen = () => settle(true);
+        probeWs.onerror = () => settle(false);
+      } catch {
+        if (!stop) setEnvState('down');
+      }
+    };
+    probe();
+    const iv = setInterval(probe, 10000);
+    return () => {
+      stop = true;
+      clearInterval(iv);
+      if (timer) clearTimeout(timer);
+      try { probeWs?.close(); } catch { /* noop */ }
+    };
+  }, [config.websocketUrl]);
+
   const isInCall = sip.callStatus === 'calling' || sip.callStatus === 'connected' || sip.callStatus === 'ringing' || sip.callStatus === 'incoming' || sip.callStatus === 'on-hold';
 
   const handleKeyPress = useCallback((key: string) => {
@@ -206,6 +244,38 @@ export default function SipDialerPanel() {
 
       {/* ── LEFT: SIP Config + Call Metrics ── */}
       <div style={{ width: 300, display: 'flex', flexDirection: 'column', gap: 12, flexShrink: 0, overflowY: 'auto' }}>
+
+        {/* Environment readiness lamp */}
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 14px', borderRadius: 12,
+            background: envState === 'ready' ? 'rgba(82, 196, 26, 0.09)'
+              : envState === 'down' ? 'rgba(255, 77, 79, 0.08)' : 'rgba(250, 173, 20, 0.07)',
+            border: `1px solid ${envState === 'ready' ? 'rgba(82, 196, 26, 0.35)'
+              : envState === 'down' ? 'rgba(255, 77, 79, 0.3)' : 'rgba(250, 173, 20, 0.25)'}`,
+          }}
+        >
+          <span
+            style={{
+              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+              background: envState === 'ready' ? '#52c41a' : envState === 'down' ? '#ff4d4f' : '#faad14',
+              boxShadow: envState === 'ready' ? '0 0 10px #52c41a, 0 0 20px rgba(82,196,26,0.5)'
+                : envState === 'down' ? '0 0 10px rgba(255,77,79,0.8)' : '0 0 8px rgba(250,173,20,0.6)',
+              animation: envState === 'checking' ? 'blink-live 1.2s ease-in-out infinite' : 'none',
+            }}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, color: envState === 'ready' ? '#7ce38b' : envState === 'down' ? '#ff8f91' : '#ffd666' }}>
+              {envState === 'ready' ? 'ENVIRONMENT READY' : envState === 'down' ? 'ENVIRONMENT OFFLINE' : 'CHECKING ENVIRONMENT'}
+            </div>
+            <div style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {envState === 'ready' ? 'SIP endpoint reachable — you can register'
+                : envState === 'down' ? `${config.websocketUrl} unreachable — start the SIP stack`
+                : `Probing ${config.websocketUrl} …`}
+            </div>
+          </div>
+        </div>
 
         {/* HTTPS Warning */}
         {typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost' && (

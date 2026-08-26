@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Select, InputNumber, Button, Table, Card, Tag, Progress, Space, Row, Col, Typography, Divider, Alert, Statistic, Steps, Badge, Modal, Input,
+  Select, InputNumber, Button, Table, Card, Tag, Progress, Space, Row, Col, Typography, Divider, Alert, Statistic, Steps, Badge, Modal, Input, message,
 } from 'antd';
 import {
   PlayCircleOutlined, StopOutlined, ThunderboltOutlined,
   DownloadOutlined, CloudServerOutlined, TableOutlined, BarChartOutlined,
   WarningOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  ClockCircleOutlined, ApiOutlined, RiseOutlined, FallOutlined,
-  SettingOutlined,
+  ClockCircleOutlined, MobileOutlined, FieldTimeOutlined, LinkOutlined, FallOutlined,
+  SettingOutlined, DashboardOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import {
@@ -151,7 +151,7 @@ export default function Dashboard() {
       try {
         const payload = { count, core_network: coreNetwork, profile, ue_init_delay: ueInitDelay };
         if (mode === '5g') await start5GTest(payload); else await start4GTest(payload);
-      } catch (e: any) { alert(e.response?.data?.error || e.message); setTestRunning(false); }
+      } catch (e: any) { message.error(e.response?.data?.error || e.message || 'Failed to start test'); setTestRunning(false); }
     } else {
       setProvLog([]); setProvRunning(true);
       try {
@@ -240,19 +240,27 @@ export default function Dashboard() {
     }
   };
 
-  const handleRestart = async () => {
-    if (!window.confirm('Restart service? This will stop any running test and clear all UE data.')) return;
-    try {
-      await restartService();
-      setUes([]); setLatencyStats({}); setShowBoxPlot(false);
-      setSelectedIdx(null); setSelectedAction(null);
-      setEventLog([]); setShowEvents(false);
-      setActionMsg('Service restarted');
-      // Refresh page after a short delay to reconnect
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (e: any) {
-      setActionMsg(e.response?.data?.error || e.message);
-    }
+  const handleRestart = () => {
+    Modal.confirm({
+      title: 'Restart service?',
+      content: 'This will stop any running test and clear all UE data.',
+      okText: 'Restart',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await restartService();
+          setUes([]); setLatencyStats({}); setShowBoxPlot(false);
+          setSelectedIdx(null); setSelectedAction(null);
+          setEventLog([]); setShowEvents(false);
+          setActionMsg('Service restarted');
+          // Refresh page after a short delay to reconnect
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (e: any) {
+          setActionMsg(e.response?.data?.error || e.message);
+        }
+      },
+    });
   };
 
   const handleViewEvents = async (idx: number) => {
@@ -302,7 +310,7 @@ export default function Dashboard() {
         const config: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
           pdu_established: { color: 'success', icon: <CheckCircleOutlined />, label: 'PDU Established' },
           service_accepted: { color: 'success', icon: <CheckCircleOutlined />, label: 'Service Accepted' },
-          registered: { color: 'processing', icon: <ApiOutlined />, label: 'Registered' },
+          registered: { color: 'processing', icon: <LinkOutlined />, label: 'Registered' },
           pdu_released: { color: 'warning', icon: <FallOutlined />, label: 'PDU Released' },
           context_released: { color: 'warning', icon: <FallOutlined />, label: 'Context Released' },
           deregistered: { color: 'error', icon: <CloseCircleOutlined />, label: 'Deregistered' },
@@ -345,8 +353,8 @@ export default function Dashboard() {
       {/* Header row with status */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
-          <Typography.Title level={4} style={{ margin: 0, color: '#00d4ff', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' }}>
-            ◈ Dashboard
+          <Typography.Title level={4} className="fx-page-title" style={{ margin: 0, paddingBottom: 8, fontSize: 18 }}>
+            <DashboardOutlined /> Dashboard
           </Typography.Title>
         </Col>
         <Col>
@@ -454,7 +462,7 @@ export default function Dashboard() {
                 title={<Text type="secondary" style={{ fontSize: 11 }}>Total UEs</Text>}
                 value={ues.length}
                 styles={{ content: { color: '#00d4ff', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
-                prefix={<ApiOutlined style={{ fontSize: 14, color: '#00d4ff' }} />}
+                prefix={<MobileOutlined style={{ fontSize: 14, color: '#00d4ff' }} />}
               />
             </Card>
           </Col>
@@ -492,7 +500,7 @@ export default function Dashboard() {
                   return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
                 })()}
                 styles={{ content: { color: '#eb2f96', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
-                prefix={<RiseOutlined style={{ fontSize: 14, color: '#eb2f96' }} />}
+                prefix={<FieldTimeOutlined style={{ fontSize: 14, color: '#eb2f96' }} />}
                 suffix="ms"
               />
             </Card>
@@ -503,7 +511,7 @@ export default function Dashboard() {
                 title={<Text type="secondary" style={{ fontSize: 11 }}>Active PDU Sessions</Text>}
                 value={ues.filter((u: any) => u.state === 'pdu_established' || u.state === 'service_accepted').length}
                 styles={{ content: { color: '#13c2c2', fontSize: 20, fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' } }}
-                prefix={<ThunderboltOutlined style={{ fontSize: 14, color: '#13c2c2' }} />}
+                prefix={<LinkOutlined style={{ fontSize: 14, color: '#13c2c2' }} />}
               />
             </Card>
           </Col>

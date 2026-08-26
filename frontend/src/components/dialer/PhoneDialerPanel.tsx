@@ -6,10 +6,10 @@
  * then a grouped pill of panel-openers (SIM / PDU / Ping / Traffic).
  * Right: the panel opened from the rail.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { message } from 'antd';
-import { AimOutlined, IdcardOutlined, LineChartOutlined, SwapOutlined } from '@ant-design/icons';
+import { SendOutlined, IdcardOutlined, LineChartOutlined, NodeIndexOutlined } from '@ant-design/icons';
 import { usePhone } from '../../hooks/usePhone';
 import type { PhoneTrafficCounters } from '../../hooks/usePhone';
 import { getTopologyStatus, listTopologies } from '../../services/api';
@@ -34,6 +34,28 @@ function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/**
+ * Each browser tab owns one simulated phone. The id is generated once and
+ * kept in sessionStorage (per-tab storage), so a reload re-attaches to the
+ * same phone while a new tab gets a fresh one — two tabs = two phones.
+ */
+function getTabPhoneId(): string {
+  const KEY = 'ranttern.phoneId';
+  try {
+    let id = sessionStorage.getItem(KEY);
+    if (!id) {
+      const rnd = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+        : Math.random().toString(36).slice(2, 14);
+      id = `p-${rnd}`;
+      sessionStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    return 'p-default';
+  }
 }
 
 /**
@@ -79,12 +101,14 @@ function RailButton(props: {
 }
 
 export default function PhoneDialerPanel() {
-  const { state, defaults, busy, txActive, rxActive, toggleAirplane, dial, hangup, answer, reject, ping, sendTraffic } = usePhone();
+  const phoneId = useMemo(getTabPhoneId, []);
+  const { state, defaults, busy, txActive, rxActive, toggleAirplane, dial, hangup, answer, reject, ping, sendTraffic } = usePhone(phoneId);
 
   const [sim, setSim] = useState<PhoneSimConfig>({});
   // Rail panels are mutually exclusive: only one button can be selected
-  // at a time (the airplane toggle stays independent).
-  const [openPanel, setOpenPanel] = useState<'sim' | 'pdu' | 'probe' | 'traffic' | null>(null);
+  // at a time (the airplane toggle stays independent). The SIM panel opens
+  // by default so credentials/addresses are visible before the first attach.
+  const [openPanel, setOpenPanel] = useState<'sim' | 'pdu' | 'probe' | 'traffic' | null>('sim');
   const togglePanel = (p: 'sim' | 'pdu' | 'probe' | 'traffic') =>
     setOpenPanel(prev => (prev === p ? null : p));
   const [pingResult, setPingResult] = useState<string>('');
@@ -241,6 +265,13 @@ export default function PhoneDialerPanel() {
         )}
       </div>
 
+      {/* Multi-phone hint: each tab is an independent phone */}
+      <div style={{ marginBottom: 16, color: '#64748b', fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }} />
+        Each browser tab runs its own independent phone — open this page in a second tab and dial
+        between the two numbers (shown in the SIM panel) to test a mutual VoNR call.
+      </div>
+
       <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Phone + icon rail */}
         <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
@@ -283,7 +314,7 @@ export default function PhoneDialerPanel() {
               title="PDU sessions"
               onClick={() => togglePanel('pdu')}
             >
-              <SwapOutlined />
+              <NodeIndexOutlined />
             </RailButton>
             <RailButton
               active={openPanel === 'probe'}
@@ -291,7 +322,7 @@ export default function PhoneDialerPanel() {
               title="Connectivity probe"
               onClick={() => togglePanel('probe')}
             >
-              <AimOutlined />
+              <SendOutlined />
             </RailButton>
             <RailButton
               active={openPanel === 'traffic'}

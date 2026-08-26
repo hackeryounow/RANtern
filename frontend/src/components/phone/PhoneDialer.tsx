@@ -307,6 +307,9 @@ export default function PhoneDialer({ state, onDial, onHangup, onAnswer, onRejec
         <input
           value={number}
           onChange={e => setNumber(e.target.value.replace(/[^\d*#+]/g, ''))}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && number && registered) { e.preventDefault(); dial(number); }
+          }}
           placeholder="Enter number"
           style={{
             flex: 1, background: 'transparent', border: 'none', outline: 'none',

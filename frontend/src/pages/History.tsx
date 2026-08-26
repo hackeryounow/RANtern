@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Tag, Space, Typography, Empty, Modal, Tooltip } from 'antd';
 import {
-  DeleteOutlined, ClearOutlined, ExclamationCircleOutlined,
+  DeleteOutlined, ClearOutlined, ExclamationCircleOutlined, HistoryOutlined,
 } from '@ant-design/icons';
 import { listHistory, getHistoryRecord, deleteHistoryRecord, clearHistory } from '../services/api';
 import Plot from '../components/Plot';
@@ -91,8 +91,8 @@ export default function History() {
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0, color: '#00d4ff', fontFamily: 'Consolas, Liberation Mono, Menlo, monospace' }}>
-          ◎ Test History
+        <Typography.Title level={4} className="fx-page-title" style={{ margin: 0, paddingBottom: 8, fontSize: 18 }}>
+          <HistoryOutlined /> Test History
         </Typography.Title>
         <Button
           danger

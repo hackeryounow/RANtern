@@ -7,7 +7,7 @@
  * (TopologyEditor) which owns the Dnd plugin + node factory.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Collapse, Input, Typography, Empty, Spin, Button, Modal, Space, message } from 'antd';
+import { Input, Typography, Empty, Spin, Button, Modal, Space, message } from 'antd';
 import { SearchOutlined, DragOutlined, PlusOutlined } from '@ant-design/icons';
 import { getNfKinds } from '../../services/api';
 import { nfColor, CATEGORY_LABELS } from './nfMeta';
@@ -132,7 +132,7 @@ export default function NFPalette({ core, onStartDrag, onAddCustom }: NFPaletteP
         />
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 6px 10px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 10px' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 24 }}>
             <Spin size="small" />
@@ -140,82 +140,69 @@ export default function NFPalette({ core, onStartDrag, onAddCustom }: NFPaletteP
         ) : grouped.length === 0 ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No NFs" />
         ) : (
-          <Collapse
-            ghost
-            defaultActiveKey={CATEGORY_ORDER}
-            items={grouped.map((g) => ({
-              key: g.key,
-              label: (
-                <span style={{ color: '#b8c4e0', fontSize: 12, fontWeight: 600 }}>
+          grouped.map((g) => (
+            <div key={g.key} style={{ marginBottom: 8 }}>
+              {/* Section header: label + hairline + count */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px 6px' }}>
+                <span style={{ color: '#64748b', fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                   {g.label}
-                  <Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>
-                    {g.items.length}
-                  </Text>
                 </span>
-              ),
-              children: (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {g.items.map((k) => {
-                    const accent = nfColor(k.kind);
-                    return (
-                      <div
-                        key={k.kind}
-                        onMouseDown={(e) => onStartDrag(k, e)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '7px 9px',
-                          borderRadius: 8,
-                          border: `1px solid ${accent}33`,
-                          background: `${accent}0d`,
-                          cursor: 'grab',
-                          userSelect: 'none',
-                          transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLDivElement).style.background = `${accent}22`;
-                          (e.currentTarget as HTMLDivElement).style.borderColor = `${accent}88`;
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLDivElement).style.background = `${accent}0d`;
-                          (e.currentTarget as HTMLDivElement).style.borderColor = `${accent}33`;
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 2,
-                            background: accent,
-                            flexShrink: 0,
-                          }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ color: '#e0e7ff', fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>
-                            {k.label}
-                          </div>
-                          <div
-                            style={{
-                              color: '#64748b',
-                              fontSize: 11,
-                              fontFamily: 'Consolas, monospace',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {k.interfaces.join(' · ')}
-                          </div>
+                <span style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, #1e3a5f, transparent)' }} />
+                <span style={{ color: '#475569', fontSize: 10, fontFamily: 'Consolas, monospace' }}>{g.items.length}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {g.items.map((k) => {
+                  const accent = nfColor(k.kind);
+                  return (
+                    <div
+                      key={k.kind}
+                      onMouseDown={(e) => onStartDrag(k, e)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 9px',
+                        borderRadius: 8,
+                        border: '1px solid #1a2740',
+                        background: '#101826',
+                        cursor: 'grab',
+                        userSelect: 'none',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.borderColor = `${accent}77`;
+                        (e.currentTarget as HTMLDivElement).style.background = `${accent}14`;
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.borderColor = '#1a2740';
+                        (e.currentTarget as HTMLDivElement).style.background = '#101826';
+                      }}
+                    >
+                      <span style={{ width: 3, height: 18, borderRadius: 2, background: accent, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: '#e0e7ff', fontSize: 12, fontWeight: 600, lineHeight: 1.25 }}>
+                          {k.label}
                         </div>
-                        <DragOutlined style={{ color: '#475569', fontSize: 12 }} />
+                        <div
+                          style={{
+                            color: '#5a6988',
+                            fontSize: 10,
+                            fontFamily: 'Consolas, monospace',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {k.interfaces.join(' · ')}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ),
-            }))}
-          />
+                      <DragOutlined style={{ color: '#3d4c66', fontSize: 12 }} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
 

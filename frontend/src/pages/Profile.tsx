@@ -6,7 +6,7 @@ import {
   PlusOutlined, DeleteOutlined, CheckOutlined, SaveOutlined,
   FileTextOutlined, SettingOutlined, DatabaseOutlined,
   EditOutlined, CopyOutlined, ArrowLeftOutlined,
-  GlobalOutlined, CloudServerOutlined, CodeOutlined,
+  GlobalOutlined, KeyOutlined, CodeOutlined,
   SearchOutlined, DownOutlined, RightOutlined,
   TagOutlined, MobileOutlined, CloudOutlined,
   ApiOutlined, LinkOutlined, SafetyOutlined,
@@ -92,7 +92,7 @@ const CATEGORIES: { key: string; label: string; icon: React.ReactNode; color: st
   {
     key: 'provision',
     label: 'Provision',
-    icon: <CloudServerOutlined />,
+    icon: <KeyOutlined />,
     color: '#eb2f96',
     matchers: k => /^(USERNAME|PASSWORD|API_TOKEN|FREE5GC_SUBSCRIPTION_TEMPLATE|OPEN5GS_SUBSCRIPTION_TEMPLATE|WEBUI_PORT)/i.test(k),
   },

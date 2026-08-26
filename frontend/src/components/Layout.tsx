@@ -39,12 +39,19 @@ export default function Layout() {
           fontFamily: 'Consolas, Liberation Mono, Menlo, monospace',
         },
         components: {
-          Layout: { siderBg: '#0d1117', bodyBg: '#0a0e17' },
-          Menu: { darkItemBg: '#0d1117', darkSubMenuItemBg: '#0d1117' },
+          Layout: { siderBg: 'rgba(13, 17, 23, 0.92)', bodyBg: 'transparent' },
+          Menu: {
+            darkItemBg: 'transparent',
+            darkSubMenuItemBg: 'transparent',
+            itemBorderRadius: 8,
+            itemMarginInline: 8,
+          },
         },
       }}
     >
-      <AntLayout style={{ minHeight: '100vh' }}>
+      <AntLayout style={{ minHeight: '100vh', background: 'transparent' }}>
+        {/* Ambient aurora + grid behind everything */}
+        <div className="fx-ambient" />
         {/* Left sidebar */}
         <Sider
           collapsible
@@ -77,6 +84,7 @@ export default function Layout() {
             <img
               src="/coresimrunner.png"
               alt="CoreSimRunner"
+              className="fx-logo"
               style={{ width: collapsed ? 28 : 32, height: collapsed ? 28 : 32, objectFit: 'contain', flexShrink: 0 }}
             />
             {!collapsed && (
@@ -131,9 +139,12 @@ export default function Layout() {
           </div>
         </Sider>
 
-        <AntLayout style={{ marginLeft: collapsed ? 56 : 220, transition: 'margin-left 0.2s' }}>
-          <Content style={{ padding: '24px 32px', minHeight: '100vh' }}>
-            <Outlet />
+        <AntLayout style={{ marginLeft: collapsed ? 56 : 220, transition: 'margin-left 0.2s', background: 'transparent' }}>
+          <Content style={{ padding: '24px 32px', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+            {/* key on the route re-mounts the wrapper -> fade+rise on navigation */}
+            <div key={location.pathname} className="page-enter" style={{ height: '100%' }}>
+              <Outlet />
+            </div>
           </Content>
         </AntLayout>
       </AntLayout>

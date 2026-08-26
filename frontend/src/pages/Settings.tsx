@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { message, Modal } from 'antd';
+import { SettingOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { listProfiles, getProfile, createProfile, updateProfile, deleteProfile, activateProfile } from '../services/api';
 
 export default function Settings() {
@@ -38,35 +40,65 @@ export default function Settings() {
   const handleSave = async () => {
     if (!selected) return;
     const payload = editMode === 'text' ? _envToDict(textContent) : values;
-    await updateProfile(selected, payload);
-    setValues(payload);
-    setEditMode('form');
+    try {
+      await updateProfile(selected, payload);
+      setValues(payload);
+      setEditMode('form');
+      message.success(`Profile "${selected}" saved`);
+    } catch (e: any) {
+      message.error(e.response?.data?.error || e.message || 'Failed to save profile');
+    }
   };
 
   const handleCreate = async () => {
-    if (!createName.trim()) return;
+    const name = createName.trim();
+    if (!name) return;
     const payload = _envToDict(createContent);
-    await createProfile(createName.trim(), payload);
-    setCreateName('');
-    setCreateContent('');
-    loadProfiles();
-    setSelected(createName.trim());
-    setValues(payload);
-    setTextContent(createContent);
-    setEditMode('form');
+    try {
+      await createProfile(name, payload);
+      message.success(`Profile "${name}" created`);
+      setCreateName('');
+      setCreateContent('');
+      loadProfiles();
+      setSelected(name);
+      setValues(payload);
+      setTextContent(createContent);
+      setEditMode('form');
+    } catch (e: any) {
+      message.error(e.response?.data?.error || e.message || 'Failed to create profile');
+    }
   };
 
-  const handleDelete = async (name: string) => {
+  const handleDelete = (name: string) => {
     if (name === 'default') return;
-    if (!confirm(`Delete profile "${name}"?`)) return;
-    await deleteProfile(name);
-    if (selected === name) { setSelected(''); setValues({}); setTextContent(''); }
-    loadProfiles();
+    Modal.confirm({
+      title: `Delete profile "${name}"?`,
+      icon: <ExclamationCircleOutlined />,
+      content: 'This cannot be undone.',
+      okText: 'Delete',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await deleteProfile(name);
+          message.success(`Profile "${name}" deleted`);
+          if (selected === name) { setSelected(''); setValues({}); setTextContent(''); }
+          loadProfiles();
+        } catch (e: any) {
+          message.error(e.response?.data?.error || e.message || 'Failed to delete profile');
+        }
+      },
+    });
   };
 
   const handleActivate = async (name: string) => {
-    await activateProfile(name);
-    setActive(name);
+    try {
+      await activateProfile(name);
+      setActive(name);
+      message.success(`Profile "${name}" is now active`);
+    } catch (e: any) {
+      message.error(e.response?.data?.error || e.message || 'Failed to activate profile');
+    }
   };
 
   const handleValueChange = (key: string, val: string) => {
@@ -99,8 +131,8 @@ export default function Settings() {
 
   return (
     <div>
-      <h1 style={{ color: 'var(--accent)', fontSize: '24px', marginBottom: '24px', fontFamily: 'var(--font-mono)' }}>
-        ⚙ Settings
+      <h1 className="fx-page-title">
+        <SettingOutlined /> Settings
       </h1>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px', height: 'calc(100vh - 120px)' }}>
@@ -131,10 +163,10 @@ export default function Settings() {
               </div>
               <div style={{ display: 'flex', gap: '4px' }}>
                 {p.name !== active && (
-                  <button className="btn" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={e => { e.stopPropagation(); handleActivate(p.name); }}>Set</button>
+                  <button className="btn" style={{ padding: '2px 8px', fontSize: '11px' }} title={`Activate profile "${p.name}"`} onClick={e => { e.stopPropagation(); handleActivate(p.name); }}>Set</button>
                 )}
                 {p.name !== 'default' && (
-                  <button className="btn btn-danger" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={e => { e.stopPropagation(); handleDelete(p.name); }}>✕</button>
+                  <button className="btn btn-danger" style={{ padding: '2px 8px', fontSize: '11px' }} title={`Delete profile "${p.name}"`} onClick={e => { e.stopPropagation(); handleDelete(p.name); }}>✕</button>
                 )}
               </div>
             </div>

@@ -68,10 +68,10 @@ async def lifespan(app: FastAPI):
         close_pool()
     except Exception:
         pass
-    # Shutdown: detach simulated phone (deregister + close tunnels)
+    # Shutdown: detach all simulated phones (deregister + close tunnels)
     try:
-        from coresimrunner.phone_sim.manager import PhoneSessionManager
-        PhoneSessionManager.get_instance().shutdown()
+        from coresimrunner.phone_sim.manager import PhoneRegistry
+        PhoneRegistry.shutdown_all()
     except Exception:
         pass
 

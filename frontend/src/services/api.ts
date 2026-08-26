@@ -273,16 +273,21 @@ export interface PhoneSimConfig {
   gnb_address?: string;
   sip_password?: string;
 }
-export const getPhoneState = () => api.get('/phone/state');
-export const getPhoneDefaults = () => api.get('/phone/defaults');
-export const setPhoneAirplane = (enabled: boolean, sim?: PhoneSimConfig) =>
-  api.post('/phone/airplane', { enabled, sim });
-export const phoneDial = (callee: string) => api.post('/phone/dial', { callee });
-export const phoneHangup = () => api.post('/phone/hangup');
-export const phoneAnswer = () => api.post('/phone/answer');
-export const phoneReject = () => api.post('/phone/reject');
-export const phonePing = (target?: string) => api.post('/phone/ping', { target });
-export const phoneTraffic = (burst = 20, target = '8.8.8.8', port = 33434) =>
-  api.post('/phone/traffic', { burst, target, port });
+export const listPhones = () => api.get('/phones');
+export const acquirePhone = (phoneId: string) => api.post(`/phones/${phoneId}/acquire`);
+export const releasePhone = (phoneId: string) => api.delete(`/phones/${phoneId}`);
+export const getPhoneState = (phoneId: string) => api.get(`/phones/${phoneId}/state`);
+export const getPhoneDefaults = (phoneId: string) => api.get(`/phones/${phoneId}/defaults`);
+export const setPhoneAirplane = (phoneId: string, enabled: boolean, sim?: PhoneSimConfig) =>
+  api.post(`/phones/${phoneId}/airplane`, { enabled, sim });
+export const phoneDial = (phoneId: string, callee: string) =>
+  api.post(`/phones/${phoneId}/dial`, { callee });
+export const phoneHangup = (phoneId: string) => api.post(`/phones/${phoneId}/hangup`);
+export const phoneAnswer = (phoneId: string) => api.post(`/phones/${phoneId}/answer`);
+export const phoneReject = (phoneId: string) => api.post(`/phones/${phoneId}/reject`);
+export const phonePing = (phoneId: string, target?: string) =>
+  api.post(`/phones/${phoneId}/ping`, { target });
+export const phoneTraffic = (phoneId: string, burst = 20, target = '8.8.8.8', port = 33434) =>
+  api.post(`/phones/${phoneId}/traffic`, { burst, target, port });
 
 export default api;

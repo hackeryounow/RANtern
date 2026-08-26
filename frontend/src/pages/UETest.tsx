@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { message } from 'antd';
+import { ExperimentOutlined } from '@ant-design/icons';
 import Plot from '../components/Plot';
 import {
   start5GTest, start4GTest, stopTest, getTestStatus,
@@ -94,7 +96,7 @@ export default function UETest() {
       if (mode === '5g') await start5GTest(payload);
       else await start4GTest(payload);
     } catch (e: any) {
-      alert(e.response?.data?.error || e.message);
+      message.error(e.response?.data?.error || e.message || 'Failed to start test');
       setRunning(false);
     }
   };
@@ -222,8 +224,8 @@ export default function UETest() {
     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
       {/* Main content */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <h1 style={{ color: 'var(--accent)', fontSize: '24px', marginBottom: '24px', fontFamily: 'var(--font-mono)' }}>
-          ◉ UE Test
+        <h1 className="fx-page-title">
+          <ExperimentOutlined /> UE Test
         </h1>
 
         {/* Control Panel */}

@@ -16,14 +16,14 @@ import { Dnd } from '@antv/x6-plugin-dnd';
 import { Selection } from '@antv/x6-plugin-selection';
 import { Snapline } from '@antv/x6-plugin-snapline';
 import { Keyboard } from '@antv/x6-plugin-keyboard';
-import { Button, Input, Select, Space, Tooltip, Typography, message, Modal, notification } from 'antd';
+import { Button, Dropdown, Input, Segmented, Select, Space, Tooltip, message, Modal, notification } from 'antd';
 import {
-  SaveOutlined, CaretRightOutlined, StopOutlined, ReloadOutlined,
-  FolderOpenOutlined, ClearOutlined, AppstoreOutlined,
-  FileTextOutlined, TableOutlined,
-  ExpandOutlined, TagOutlined, ApartmentOutlined, PlusOutlined,
+  SaveOutlined, CaretRightOutlined, StopOutlined,
+  FolderOpenOutlined, ClearOutlined, ContainerOutlined,
+  CodeOutlined, TableOutlined,
+  ExpandOutlined, TagOutlined, ApartmentOutlined, DeploymentUnitOutlined, PlusOutlined,
   LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  DashboardOutlined,
+  DashboardOutlined, ZoomInOutlined, ZoomOutOutlined, ImportOutlined,
 } from '@ant-design/icons';
 import {
   listTopologies, getTopologyDoc, updateTopology, deployTopology, undeployTopology,
@@ -46,7 +46,6 @@ import {
   nfColor, perimeterPortPosition, bridgePortPosition, PORT_RADIUS,
 } from './nfMeta';
 
-const { Text } = Typography;
 const mono = 'Consolas, Liberation Mono, Menlo, monospace';
 
 // ── Register the custom React shapes once ───────────────────────────────
@@ -138,10 +137,12 @@ function stripPrefix(ip?: string): string | undefined {
 const EDGE_LABEL = (a: string, b: string) => ({
   position: 0.5,
   attrs: {
-    label: { text: `${a} ↔ ${b}`, fill: '#6b7fa8', fontSize: 9, fontFamily: mono, textAnchor: 'middle' },
-    rect: { fill: '#0d1117', stroke: '#1e3a5f44', rx: 3, ry: 3, refWidth: 6, refHeight: 4, refX: -3, refY: -2 },
+    label: { text: `${a} ↔ ${b}`, fill: '#7d92b8', fontSize: 9, fontFamily: mono, textAnchor: 'middle' },
+    rect: { fill: '#0d1117', stroke: '#24466e55', rx: 3, ry: 3, refWidth: 6, refHeight: 4, refX: -3, refY: -2 },
   },
 });
+
+const EDGE_STROKE = '#3a5580';
 
 export default function TopologyEditor() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -289,7 +290,7 @@ export default function TopologyEditor() {
           return this.createEdge({
             shape: 'edge',
             zIndex: -1,
-            attrs: { line: { stroke: '#2d3f5e', strokeWidth: 1.5, targetMarker: null, sourceMarker: null } },
+            attrs: { line: { stroke: EDGE_STROKE, strokeWidth: 1.5, targetMarker: null, sourceMarker: null } },
           });
         },
       },
@@ -669,7 +670,7 @@ export default function TopologyEditor() {
         zIndex: -1,
         source: { cell: src.nodeId, port: srcPort },
         target: { cell: tgt.nodeId, port: tgtPort },
-        attrs: { line: { stroke: '#2d3f5e', strokeWidth: 1.5, targetMarker: null, sourceMarker: null } },
+        attrs: { line: { stroke: EDGE_STROKE, strokeWidth: 1.5, targetMarker: null, sourceMarker: null } },
       });
       edge.setLabels([EDGE_LABEL(bridgeIface(srcPort), bridgeIface(tgtPort))]);
       syncFromGraph();
@@ -914,7 +915,7 @@ export default function TopologyEditor() {
         zIndex: -1,
         source: { cell: a.node, port: portA },
         target: { cell: b.node, port: portB },
-        attrs: { line: { stroke: '#2d3f5e', strokeWidth: 1.5, targetMarker: null, sourceMarker: null } },
+        attrs: { line: { stroke: EDGE_STROKE, strokeWidth: 1.5, targetMarker: null, sourceMarker: null } },
         labels: [EDGE_LABEL(a.iface, b.iface)],
       });
     });
@@ -1291,15 +1292,15 @@ export default function TopologyEditor() {
   // ── Render ──
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0e17' }}>
-      {/* Toolbar */}
+      {/* Toolbar — identity on the left, live stats + actions on the right */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '8px 12px',
-          borderBottom: '1px solid #1e3a5f',
-          background: '#0d1117',
+          padding: '10px 14px',
+          borderBottom: '1px solid #16233c',
+          background: 'linear-gradient(180deg, #0d1420 0%, #0b0f18 100%)',
           flexWrap: 'wrap',
           flexShrink: 0,
         }}
@@ -1309,16 +1310,15 @@ export default function TopologyEditor() {
           value={topoName}
           onChange={(e) => setTopoName(e.target.value)}
           placeholder="topology name"
-          style={{ width: 150, fontFamily: mono, background: 'rgba(255,255,255,0.03)' }}
+          style={{ width: 160, fontFamily: mono, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}
         />
         <Tooltip title="New topology">
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleNew} className="topo-tbtn" />
         </Tooltip>
-        <Select
+        <Segmented
           size="small"
           value={coreType}
-          onChange={handleCoreChange}
-          style={{ width: 110 }}
+          onChange={(v) => handleCoreChange(String(v))}
           options={[
             { value: 'open5gs', label: 'Open5GS' },
             { value: 'free5gc', label: 'Free5GC' },
@@ -1326,15 +1326,16 @@ export default function TopologyEditor() {
         />
         <Select
           size="small"
-          placeholder="Switch topology..."
+          placeholder="Open saved topology..."
           value={savedTopos.some((t) => t.name === topoName) ? topoName : undefined}
           onChange={(v) => v && loadTopology(v)}
-          style={{ width: 220 }}
+          style={{ width: 210 }}
           popupMatchSelectWidth={false}
           suffixIcon={<FolderOpenOutlined />}
           options={savedTopos.map((t) => ({ value: t.name, label: `${t.name} (${t.core_type})` }))}
         />
-        <Space size={2} style={{ marginLeft: 'auto' }} className="topo-toolbar">
+
+        <Space size={4} style={{ marginLeft: 'auto' }} className="topo-toolbar">
           {/* Live running / CPU stats for this topology */}
           <Tooltip title={`${topoStats.running} of ${topoStats.total} containers running`}>
             <span
@@ -1342,13 +1343,13 @@ export default function TopologyEditor() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '2px 10px',
-                borderRadius: 6,
+                padding: '3px 10px',
+                borderRadius: 8,
                 border: '1px solid #1e3a5f',
                 background: 'rgba(255,255,255,0.02)',
                 fontFamily: mono,
-                fontSize: 12,
-                marginRight: 6,
+                fontSize: 11.5,
+                marginRight: 4,
               }}
             >
               <span style={{ color: topoStats.running > 0 ? '#52c41a' : '#64748b' }}>●</span>
@@ -1363,35 +1364,47 @@ export default function TopologyEditor() {
             <Button type="text" size="small" icon={<FolderOpenOutlined />} onClick={() => setToposOpen(true)} className="topo-tbtn" />
           </Tooltip>
           <Tooltip title="Docker images">
-            <Button type="text" size="small" icon={<AppstoreOutlined />} onClick={() => setImagesOpen(true)} className="topo-tbtn" />
+            <Button type="text" size="small" icon={<ContainerOutlined />} onClick={() => setImagesOpen(true)} className="topo-tbtn" />
           </Tooltip>
-          <Tooltip title="Clear canvas">
-            <Button type="text" size="small" icon={<ClearOutlined />} onClick={handleClear} className="topo-tbtn" />
-          </Tooltip>
-          <Tooltip title="Save topology (Ctrl+S)">
-            <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} loading={saving} className="topo-tbtn" />
-          </Tooltip>
-          <span className="topo-toolbar-divider" />
-          <Tooltip title="Run / deploy (Ctrl+Enter)">
-            <Button type="text" size="small" icon={<CaretRightOutlined />} onClick={handleDeploy} loading={deploying} className="topo-tbtn topo-tbtn-run" />
-          </Tooltip>
-          <Tooltip title="Stop (undeploy)">
-            <Button type="text" size="small" icon={<StopOutlined />} onClick={handleUndeploy} loading={undeploying} className="topo-tbtn topo-tbtn-stop" />
-          </Tooltip>
-          <span className="topo-toolbar-divider" />
           <Tooltip title="View / edit topology YAML">
-            <Button type="text" size="small" icon={<FileTextOutlined />} onClick={() => setYamlOpen((v) => !v)} className={`topo-tbtn${yamlOpen ? ' topo-tbtn-active' : ''}`} />
+            <Button type="text" size="small" icon={<CodeOutlined />} onClick={() => setYamlOpen((v) => !v)} className={`topo-tbtn${yamlOpen ? ' topo-tbtn-active' : ''}`} />
           </Tooltip>
           <Tooltip title="Inspect nodes/links">
             <Button type="text" size="small" icon={<TableOutlined />} onClick={() => setInspectOpen((v) => !v)} className={`topo-tbtn${inspectOpen ? ' topo-tbtn-active' : ''}`} />
           </Tooltip>
+          <Tooltip title="Clear canvas">
+            <Button type="text" size="small" icon={<ClearOutlined />} onClick={() => {
+              if (graphRef.current && graphRef.current.getNodes().length > 0) {
+                Modal.confirm({
+                  title: 'Clear canvas?',
+                  content: 'This removes all nodes and links. Unsaved changes will be lost.',
+                  okText: 'Clear',
+                  okButtonProps: { danger: true },
+                  cancelText: 'Cancel',
+                  onOk: handleClear,
+                });
+              } else {
+                handleClear();
+              }
+            }} className="topo-tbtn" />
+          </Tooltip>
 
-          <Tooltip title="Fit to viewport">
-            <Button type="text" size="small" icon={<ExpandOutlined />} onClick={handleFitViewport} className="topo-tbtn" />
+          <span className="topo-toolbar-divider" />
+
+          <Button size="small" icon={<SaveOutlined />} onClick={() => handleSave()} loading={saving}
+            style={{ borderRadius: 8 }}>
+            Save
+          </Button>
+          <Tooltip title="Ctrl+Enter">
+            <Button size="small" type="primary" icon={<CaretRightOutlined />} onClick={handleDeploy} loading={deploying}
+              style={{ borderRadius: 8, background: 'linear-gradient(135deg, #23a55a, #15803d)', border: 'none', fontWeight: 600, boxShadow: '0 2px 10px rgba(34,197,94,0.25)' }}>
+              Run
+            </Button>
           </Tooltip>
-          <Tooltip title="Toggle link labels">
-            <Button type="text" size="small" icon={<TagOutlined />} onClick={handleToggleLabels} className={`topo-tbtn${labelsVisible ? ' topo-tbtn-active' : ''}`} />
-          </Tooltip>
+          <Button size="small" danger ghost icon={<StopOutlined />} onClick={handleUndeploy} loading={undeploying}
+            style={{ borderRadius: 8 }}>
+            Stop
+          </Button>
         </Space>
       </div>
 
@@ -1403,9 +1416,59 @@ export default function TopologyEditor() {
           <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
           {nodes.length === 0 && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                Drag NF components from the left palette to start building your topology
-              </Text>
+              <div
+                style={{
+                  pointerEvents: 'auto',
+                  textAlign: 'center',
+                  maxWidth: 440,
+                  padding: '34px 40px',
+                  borderRadius: 20,
+                  background: 'rgba(13, 20, 32, 0.78)',
+                  border: '1px solid #1c2b47',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
+                }}
+              >
+                <div
+                  style={{
+                    width: 62, height: 62, margin: '0 auto 16px', borderRadius: 18,
+                    background: 'linear-gradient(135deg, rgba(0,212,255,0.16), rgba(99,102,241,0.16))',
+                    border: '1px solid rgba(0,212,255,0.35)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 0 24px rgba(0,212,255,0.15)',
+                  }}
+                >
+                  <ApartmentOutlined style={{ fontSize: 27, color: '#00d4ff' }} />
+                </div>
+                <div style={{ color: '#f0f4ff', fontSize: 16, fontWeight: 700 }}>Design your core network</div>
+                <div style={{ color: '#64748b', fontSize: 12, marginTop: 6, lineHeight: 1.7 }}>
+                  Drag NF components from the palette, wire their interfaces,
+                  then Run to deploy the containers.
+                </div>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
+                  {templateVariants.length > 0 && (
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: templateVariants.map((v) => ({
+                          key: v.id,
+                          label: v.label,
+                          onClick: () => handleLoadDefaultTemplate(v.id, v.label),
+                        })),
+                      }}
+                    >
+                      <Button type="primary" size="small" icon={<ImportOutlined />}
+                        style={{ borderRadius: 8, background: 'linear-gradient(135deg, #00d4ff, #6366f1)', border: 'none', fontWeight: 600 }}>
+                        Load 3GPP template
+                      </Button>
+                    </Dropdown>
+                  )}
+                  <Button size="small" icon={<FolderOpenOutlined />} onClick={() => setToposOpen(true)}
+                    style={{ borderRadius: 8 }}>
+                    Open saved
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1536,6 +1599,26 @@ export default function TopologyEditor() {
               ))}
             </div>
           )}
+
+          {/* Floating view controls (bottom-right) */}
+          <div className="topo-fab">
+            <Tooltip title="Zoom in" placement="left">
+              <button className="topo-fab-btn" onClick={handleZoomIn}><ZoomInOutlined /></button>
+            </Tooltip>
+            <Tooltip title="Zoom out" placement="left">
+              <button className="topo-fab-btn" onClick={handleZoomOut}><ZoomOutOutlined /></button>
+            </Tooltip>
+            <Tooltip title="Fit to viewport" placement="left">
+              <button className="topo-fab-btn" onClick={handleFitViewport}><ExpandOutlined /></button>
+            </Tooltip>
+            <Tooltip title="Auto layout" placement="left">
+              <button className="topo-fab-btn" onClick={handleAutoLayout}><DeploymentUnitOutlined /></button>
+            </Tooltip>
+            <div className="topo-fab-sep" />
+            <Tooltip title="Toggle link labels" placement="left">
+              <button className={`topo-fab-btn${labelsVisible ? ' active' : ''}`} onClick={handleToggleLabels}><TagOutlined /></button>
+            </Tooltip>
+          </div>
 
           {/* Pending-connect banner (connect flow armed) */}
           {pendingConnect && (
